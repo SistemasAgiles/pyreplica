@@ -1,0 +1,225 @@
+
+== How to compile psycopg2 with extensions (listen support) on windows ==
+
+ * Python 2.5 (with development support files)
+ * Postgresql 8.1 (with development support files)
+ * MinGW (gcc compiler)
+ * psycopg2 2.0.6 (source tarball)
+
+{{{
+python setup.py build_ext -c mingw32
+python setup.py install
+}}}
+
+
+== Slony-like schema (primary key simple index) ==
+
+{{{
+CREATE OR REPLACE FUNCTION xxidin(cstring)
+  RETURNS xxid AS
+'$libdir/xxid', '_Slony_I_xxidin'
+  LANGUAGE 'c' VOLATILE;
+
+CREATE OR REPLACE FUNCTION xxidout(xxid)
+  RETURNS cstring AS
+'$libdir/xxid', '_Slony_I_xxidout'
+  LANGUAGE 'c' VOLATILE;
+
+CREATE TYPE xxid
+   (INPUT="xxidin", OUTPUT="xxidout", DEFAULT='',
+       INTERNALLENGTH=4, ALIGNMENT=int4, STORAGE=PLAIN);
+
+CREATE SEQUENCE sl_local_node_id;
+CREATE SEQUENCE sl_log_status;
+CREATE SEQUENCE sl_action_seq;
+
+CREATE TABLE sl_log_1
+(
+  log_origin int4, -- Origin node from which the change came
+  log_xid xxid, -- Transaction ID on the origin node
+  log_tableid int4, -- The table ID (from sl_table.tab_id) that this log entry is to affect
+  log_actionseq int8 PRIMARY KEY,
+  log_cmdtype char(1), -- Replication action to take. U = Update, I = Insert, D = DELETE
+  log_cmddata text -- The data needed to perform the log action
+) 
+WITHOUT OIDS;
+
+CREATE TABLE sl_log_2
+(
+  log_origin int4, -- Origin node from which the change came
+  log_xid xxid, -- Transaction ID on the origin node
+  log_tableid int4, -- The table ID (from sl_table.tab_id) that this log entry is to affect
+  log_actionseq int8 PRIMARY KEY,
+  log_cmdtype char(1), -- Replication action to take. U = Update, I = Insert, D = DELETE
+  log_cmddata text -- The data needed to perform the log action
+) 
+WITHOUT OIDS;
+
+drop trigger test_trigger;
+create trigger test_trigger after insert or update or delete on test for each row execute procedure
+logTrigger ('public', 188617, 'kvvvv'); -- schema, oid, k for key else
+
+}}}
+
+== Other test stuff ==
+
+{{{
+-- binary data insert
+insert into udata (bin) values (E'bi\tn\\000bin');
+
+
+CREATE OR REPLACE FUNCTION pytest() RETURNS TRIGGER 
+AS '
+plpy.info ("TD=%s" % TD)
+plpy.info ("table_name=%s" % TD['table_name'])
+plpy.info ("table_schema=%s" % TD['table_schema'])
+return None
+' LANGUAGE 'plpythonu';
+
+DROP TRIGGER test_trig;
+CREATE TRIGGER test_trig AFTER INSERT OR UPDATE OR 
+DELETE ON test 
+  FOR EACH ROW EXECUTE PROCEDURE pytest();
+
+INSERT INTO test (t,n,f,b) VALUES (random()::text, random(), now(), True);
+UPDATE test SET broken='1234', works='1234', alsoworks='1234';
+DELETE FROM test;
+
+
+http://www.varlena.com/GeneralBits/66.php
+
+CREATE OR REPLACE FUNCTION test_plpgsql() RETURNS TRIGGER AS $emp_audit$
+    BEGIN
+        --
+        -- Create a row in emp_audit to reflect the operation performed on emp,
+        -- make use of the special variable TG_OP to work out the operation.
+        --
+        IF (TG_OP = 'DELETE') THEN
+            INSERT INTO replica_log (sql,ts) SELECT 'DELETE FROM ' || TG_RELNAME || ' WHERE id=' || OLD.id, now();
+            RETURN OLD;
+        ELSIF (TG_OP = 'UPDATE') THEN
+            INSERT INTO replica_log (sql,ts) SELECT 'UPDATE ' || TG_RELNAME || ' WHERE id=' || OLD.id, now();
+            RETURN NEW;
+        ELSIF (TG_OP = 'INSERT') THEN
+            INSERT INTO replica_log (sql,ts) SELECT 'INSERT ' || TG_RELNAME || ' WHERE id=' || NEW.id, now();
+            RETURN NEW;
+        END IF;
+        RETURN NULL; -- result is ignored since this is an AFTER trigger
+    END;
+$emp_audit$ LANGUAGE plpgsql;
+CREATE TRIGGER test_trig BEFORE INSERT OR UPDATE OR DELETE ON test FOR EACH ROW EXECUTE PROCEDURE test_plpgsql;
+
+CREATE OR REPLACE FUNCTION pyreplicate() RETURNS TRIGGER AS '
+
+  def mogrify(v):
+      if v == None:
+         v = "NULL"
+      else:
+          try:
+            x = v + 1
+            v = str(v)
+          except:
+            v = "''%s''" % v
+      return v
+
+  new = TD["new"]
+  old = TD["old"]
+
+  event = TD["event"]
+
+  r = plpy.execute("select relname from pg_class where oid = %(relid)s"
+                   % TD, 1)
+  relname = r[0]["relname"]
+  
+  if event = "INSERT":
+      sql = "INSERT INTO %s (%) VALUES (%)" % (
+               relname,
+  vals = [ mogrify(OLD[k]) for k in OLD.keys() ]
+  cols = ", ".join(OLD.keys())
+  vals = ", ".join(vals)
+  insstr = "insert into %s (%s) values (%s)" % (relname, cols, vals)
+
+  r = plpy.execute(insstr, 0)
+  return "MODIFY"
+' LANGUAGE plpythonu;
+
+
+
+drop table test;
+create table test (id serial, t text, n float, f timestamp, b boolean) without oids;
+DROP TRIGGER test_trig on test;
+CREATE TRIGGER test_trig after INSERT OR UPDATE OR DELETE ON test FOR EACH ROW EXECUTE PROCEDURE py_log_trigger('test','id');
+
+
+CREATE OR REPLACE FUNCTION benchmark (iterations int)
+   RETURNS interval AS '
+   DECLARE
+      s timestamp;
+      e timestamp;
+      i int := 0;
+   BEGIN
+      s := timeofday();
+      LOOP
+         i:=i+1;
+         IF i>iterations THEN 
+            EXIT;
+         END IF;
+         INSERT INTO test (t,n,f,b) VALUES (random()::text, random(), now(), True);
+      END LOOP;
+      e := timeofday();
+      RETURN extract(epoch from e) - extract(epoch from s);
+   END;
+   ' language 'plpgsql';
+
+
+CREATE OR REPLACE FUNCTION benchmark (iterations int, sql text)
+   RETURNS interval AS '
+   DECLARE
+      s timestamp;
+      e timestamp;
+      i int := 0;
+   BEGIN
+      s := timeofday();
+      LOOP
+         i:=i+1;
+         IF i>iterations THEN 
+            EXIT;
+         END IF;
+         EXECUTE sql;
+      END LOOP;
+      e := timeofday();
+      RETURN extract(epoch from e) - extract(epoch from s);
+   END;
+   ' language 'plpgsql';
+
+import sys
+import psycopg2
+import select
+
+con = psycopg2.connect("dbname=adan user=postgres")
+cur = con.cursor()
+
+cur = con.cursor()
+
+cur.execute("listen test")
+
+print "Waiting for 'NOTIFY test'"
+while 1:
+  select.select([cur],[],[])==([],[],[])
+  cur.execute("SELECT 1")
+  notifies = con.notifies()
+  for n in notifies:
+    # in real life, do something with each...
+    print n
+
+
+
+}}}
+
+== ==
+{{{
+
+C:\MINGW\BIN\gcc.exe -mno-cygwin -O -Wall -I. -IC:/ARCHIV~1/POSTGR~1/8.1/include -IC:/ARCHIV~1/POSTGR~1/8.1/include/server   textbuf.c -o textbuf.o
+gcc.exe -mno-cygwin -O -Wall   textbuf.c -o textbuf.o
+
+}}}

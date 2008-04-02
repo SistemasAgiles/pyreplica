@@ -1,0 +1,94 @@
+== Without trigger ==
+
+-- Ejecutando la consulta:
+select benchmark(100000)
+
+Tiempo total de ejecución de la consulta: 3422 ms.
+Recuperación de datos en tiempo de ejecución: 0 ms.
+1 filas recuperadas.
+
+-- Ejecutando la consulta:
+select benchmark(100000)
+
+Tiempo total de ejecución de la consulta: 3516 ms.
+Recuperación de datos en tiempo de ejecución: 0 ms.
+1 filas recuperadas.
+
+-- Ejecutando la consulta:
+select benchmark(100000)
+
+Tiempo total de ejecución de la consulta: 3515 ms.
+Recuperación de datos en tiempo de ejecución: 0 ms.
+1 filas recuperadas.
+
+-- Ejecutando la consulta:
+select benchmark(100000)
+
+Tiempo total de ejecución de la consulta: 3422 ms.
+Recuperación de datos en tiempo de ejecución: 0 ms.
+1 filas recuperadas.
+
+---
+
+== Trigger py_log_trigger() (python) ==
+
+-- Ejecutando la consulta:
+select benchmark(100000);
+
+Tiempo total de ejecución de la consulta: 15188 ms.
+Recuperación de datos en tiempo de ejecución: 15 ms.
+1 filas recuperadas.
+
+-- Ejecutando la consulta:
+select benchmark(100000);
+
+Tiempo total de ejecución de la consulta: 15094 ms.
+Recuperación de datos en tiempo de ejecución: 0 ms.
+1 filas recuperadas.
+
+-- Ejecutando la consulta:
+select benchmark(100000);
+
+Tiempo total de ejecución de la consulta: 15187 ms.
+Recuperación de datos en tiempo de ejecución: 16 ms.
+1 filas recuperadas.
+
+-- Ejecutando la consulta:
+select benchmark(100000);
+
+Tiempo total de ejecución de la consulta: 15297 ms.
+Recuperación de datos en tiempo de ejecución: 0 ms.
+1 filas recuperadas.
+
+
+== Trigger test_plpgsql (plsql): ==
+
+-- Ejecutando la consulta:
+select benchmark(100000)
+
+Tiempo total de ejecución de la consulta: 10047 ms.
+Recuperación de datos en tiempo de ejecución: 0 ms.
+1 filas recuperadas.
+
+-- Ejecutando la consulta:
+select benchmark(100000)
+
+Tiempo total de ejecución de la consulta: 11562 ms.
+Recuperación de datos en tiempo de ejecución: 0 ms.
+1 filas recuperadas.
+
+-- Ejecutando la consulta:
+select benchmark(100000)
+
+Tiempo total de ejecución de la consulta: 11562 ms.
+Recuperación de datos en tiempo de ejecución: 0 ms.
+1 filas recuperadas.
+
+-- Ejecutando la consulta:
+select benchmark(100000)
+
+Tiempo total de ejecución de la consulta: 11703 ms.
+Recuperación de datos en tiempo de ejecución: 0 ms.
+1 filas recuperadas.
+
+== Trigger _Slony_I_logTrigger (slony c): ==
