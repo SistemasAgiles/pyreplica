@@ -30,7 +30,7 @@ Recuperación de datos en tiempo de ejecución: 0 ms.
 
 ---
 
-== Trigger py_log_trigger() (python) ==
+== Trigger py_log_trigger() (plpythonu) ==
 
 -- Ejecutando la consulta:
 select benchmark(100000);
@@ -92,3 +92,62 @@ Recuperación de datos en tiempo de ejecución: 0 ms.
 1 filas recuperadas.
 
 == Trigger _Slony_I_logTrigger (slony c): ==
+
+-- Ejecutando la consulta:
+select benchmark(100000);
+
+Tiempo total de ejecución de la consulta: 12875 ms.
+Recuperación de datos en tiempo de ejecución: 16 ms.
+1 filas recuperadas.
+
+-- Ejecutando la consulta:
+select benchmark(100000);
+
+Tiempo total de ejecución de la consulta: 13078 ms.
+Recuperación de datos en tiempo de ejecución: 0 ms.
+1 filas recuperadas.
+
+-- Ejecutando la consulta:
+select benchmark(100000);
+
+Tiempo total de ejecución de la consulta: 12969 ms.
+Recuperación de datos en tiempo de ejecución: 15 ms.
+1 filas recuperadas.
+
+-- Ejecutando la consulta:
+select benchmark(100000);
+
+Tiempo total de ejecución de la consulta: 13375 ms.
+Recuperación de datos en tiempo de ejecución: 0 ms.
+1 filas recuperadas.
+
+== Trigger _Slony_I_logTrigger (slony c) simple index: ==
+
+-- Ejecutando la consulta:
+select benchmark(100000);
+
+Tiempo total de ejecución de la consulta: 8547 ms.
+Recuperación de datos en tiempo de ejecución: 15 ms.
+1 filas recuperadas.
+
+-- Ejecutando la consulta:
+select benchmark(100000);
+
+Tiempo total de ejecución de la consulta: 8860 ms.
+Recuperación de datos en tiempo de ejecución: 0 ms.
+1 filas recuperadas.
+
+-- Ejecutando la consulta:
+select benchmark(100000);
+
+Tiempo total de ejecución de la consulta: 9157 ms.
+Recuperación de datos en tiempo de ejecución: 0 ms.
+1 filas recuperadas.
+
+-- Ejecutando la consulta:
+select benchmark(100000);
+
+Tiempo total de ejecución de la consulta: 8656 ms.
+Recuperación de datos en tiempo de ejecución: 0 ms.
+1 filas recuperadas.
+
