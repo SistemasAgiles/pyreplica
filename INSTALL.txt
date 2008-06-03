@@ -1,0 +1,87 @@
+How-To Install PyReplica (wiki format):
+
+== Master Install ==
+
+Installing this replication system in the master database is as easy as executing the bundled script master-install.sql
+
+It is recommended that you:
+ 1. Shutdown all clients
+ 2. Make a dump (to recreate slave db and prevent any data loss or mistake in this process)
+ 3. Execute trigger installation script
+ 4. Make simple tests to check permissions and triggers (some INSERT, UPDATE, DELETE queries)
+ 5. Restart all clients (at this point, replication will be running!)
+
+
+The function py_log_create_tg('tablename') will automagically detect primary keys and create the log trigger. For each table processed it will output if the trigger was installed successfully:
+{{{
+test=# SELECT py_log_create_tg(relname::text) FROM pg_class WHERE relname !~ '^(pg_|sql_)' AND relkind = 'r' AND relname != 'replica_log' ;
+                    py_log_create_tg
+--------------------------------------------------------
+ table t has no pk constraint (couldn't be replicated)!
+ created trigger on tt (id1,id2)
+ created trigger on student (id)
+(3 rows)
+}}}
+
+ * Table t can't be replicated because it doesn't have a primary key, so the trigger was not installed.
+ * Trigger was successfully installed on table tt and student
+
+
+To install the trigger manually in a table, you could run py_log_create_tg('tablename') or directly using CREATE TRIGGER instruction (see sql file).
+
+
+=== Master install on Debian ===
+ * Assure plpythonu packages are installed
+ * Open the master database and execute master-install.sql
+
+Command line example:
+{{{
+apt-get install postgresql-plpython-8.1
+psql somedb -U someuser < master-install.sql
+}}}
+
+=== Master install on Windows ===
+ * Check PlPython option in Windows PostgreSQL installer (python24.dll and plpython.dll must exist in C:\Archivos de programa\PostgreSQL\8.1\lib\ or equivalent)
+ * Double-click on master-install and complete server, database and username, or open PgAdmin III manually and copy and paste manually in a query window.
+
+
+== Slave Install ==
+
+Although python script could be run on windows, currently only linux (debian) is supported for a slave replica.
+
+=== Slave install on Debian ===
+ * Install required packages (python2.4 and psycopg2)
+ * Checkout files to a well-known location (ie. /usr/local/pyreplica):
+ * Copy and edit a configuration file per slave database (ie. /etc/pyreplica/somedb.conf)
+ * Make a link to init.d script
+ * Install init.d script with update-rc.d (so it starts when machine is turned on)
+ * Start pyreplica
+
+Command line example:
+{{{
+apt-get install python2.4 python-psycopg2
+svn co http://www.nsis.com.ar/svn/pyreplica /usr/local/pyreplica
+cp /usr/local/pyreplica/sample.conf /etc/pyreplica/somedb.conf
+vi /etc/pyreplica/somedb.conf
+ln /usr/local/pyreplica/init.d-sample.sh /etc/init.d/pyreplica -sf
+update-rc.d pyreplica defaults
+/etc/init.d/pyreplica start
+}}}
+
+In somedb.conf you should have configured the log file path (usually /var/log/somedb-pyreplica.log), you can inspect that file and see what is happening:
+{{{
+Sun Jun  1 14:52:32 2008 Opening origin (master) connection
+Sun Jun  1 14:52:34 2008 Opening replica (slave) connection
+Sun Jun  1 14:52:34 2008 Encoding for this connections are UTF8 UTF8
+Sun  Jun  1 14:52:34 2008 Executing: UPDATE "test" SET "a"='123' WHERE "id2"='1' AND "id2"='2'
+Sun Jun  1 18:50:34 2008 Waiting for 'NOTIFY'
+Sun Jun  1 18:51:34 2008 Timeout(''keepalive'')!
+Sun Jun  1 18:51:34 2008 Waiting for 'NOTIFY'
+Sun Jun  1 18:52:34 2008 Timeout(''keepalive'')!
+}}}
+
+If it fails, you can run pyreplica.py directly to get log output directly to the console:
+{{{
+python pyreplica.py "dbname=master user=postgres host=remotehost" "dbname=slave user=postgres host=localhost"
+}}}
+(change dbname, user, password and host)!

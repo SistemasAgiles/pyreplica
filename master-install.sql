@@ -1,4 +1,4 @@
---- == Master db ==
+-- == Master db ==
 
 -- create python language (must be installed):
 CREATE LANGUAGE plpythonu;
@@ -75,10 +75,10 @@ CREATE TABLE replica_log (
  ts TIMESTAMP DEFAULT now()
 ) WITHOUT OIDS ;
 
--- setup permission:
+-- setup permission (if applicable):
 
-GRANT ALL ON replica_log_id_seq TO someone; 
-GRANT ALL ON replica_log TO someone; 
+--GRANT ALL ON replica_log_id_seq TO someone; 
+--GRANT ALL ON replica_log TO someone; 
 
 
 -- for each table that needs replication (on master db), create a trigger like this:
@@ -86,14 +86,7 @@ GRANT ALL ON replica_log TO someone;
 -- where 'test' is the table name and ('id1','id2') is the primary key 
 
 
-
--- == Replica (slave) db ==
--- create sequence (to track logs proccessed):
-CREATE SEQUENCE replica_log_id_seq START 0 MINVALUE 0;
-GRANT ALL ON replica_log_id_seq TO someone; -- master and slave
-
-
--- == Automation ==
+-- == Automatically install trigger to all tables ==
 
 CREATE OR REPLACE FUNCTION py_log_create_tg(relname varchar) returns text AS
 $BODY$
@@ -125,11 +118,11 @@ LEFT JOIN information_schema.key_column_usage kcu
   for r in rv:
     keys.append(r['column_name'])
 
-  # drop current trigger (if any)
-  try:
-     plpy.execute("DROP TRIGGER %(relname)s_replica_tg ON %(relname)s;" % {'relname':relname,})
-  except:
-     pass
+  # drop current trigger (if any) 
+  #try:
+  #   plpy.execute("DROP TRIGGER %(relname)s_replica_tg ON %(relname)s;" % {'relname':relname,})
+  #except:
+  #   pass
 
   # create triggers:
   plpy.execute("""
@@ -145,5 +138,5 @@ CREATE TRIGGER %(relname)s_replica_tg
 
 -- create trigger for all tables:
 
-SELECT py_log_create_tg(relname::text) FROM pg_class WHERE relname !~ '^(pg_|sql_)' AND relkind = 'r';
+SELECT py_log_create_tg(relname::text) FROM pg_class WHERE relname !~ '^(pg_|sql_)' AND relkind = 'r' AND relname != 'replica_log' ;
 
