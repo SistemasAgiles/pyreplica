@@ -1,0 +1,25 @@
+PyReplica LEEME (wiki format):
+
+PyReplica es otro sistema de replicación "maestro a multiples esclavos" basado en disparadores para base de datos PostgreSQL.
+
+Esta programado en Python, apuntando a ser simple y flexible, permitiendo:
+ * Fácil instalación
+ * Fácil administración
+ * Fácil adaptación (manual)
+ * Eficiencia (bajo impacto de uso de memoria y red)
+
+No hace:
+ * Fail over automático
+ * Resolución de conflictos (como un sistema maestro/esclavo, esto no debería suceder)
+
+Consiste en un disparador plpythonu de registro (py_log_replica) y un script esclavo (pyreplica.py)
+El disparador almacena un registro de replicación (instrucciones de manipulación de datos INSERT,UPDATE,DELETE sobre las tablas afectadas en la tabla replica_log) y señala con un mensaje NOTIFY a las replicas.
+El script esclavo cliente se conecta a ambas bases de datos (maestra y esclava), escucha las señales NOTIFY en la base maestra, y re-ejecuta el registro de replica en la base esclava cuando llega dicha señal. Utiliza secuencias y transacciones para evitar perdida de datos. 
+
+El disparador detecta los cambios y los almacena usando la clave primaria de la base de datos. Por lo cual, si la tabla no tiene clave primaria, no puede ser replicada.
+
+Como usa señales NOTIFY, la replicación es practicamente instantánea y más eficiente (sin polling). Si el cliente esta caido y las señales NOTIFY se pierden, cuando el cliente se conecta nuevamanete, automaticamente reejecuta los datos replicados "perdidos".
+
+Mediciones de rendimiento simple muestran que el disparador solo es un 50% más lento que uno basado en C (como en slony-I), con los beneficios de que puede ser facilmente instalado, portado, mantenido y adaptado. (ver benchmarks.txt)
+
+Ver INSTALAR.txt para el procedimiento de instalación.

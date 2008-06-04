@@ -31,7 +31,7 @@ To install the trigger manually in a table, you could run py_log_create_tg('tabl
 
 
 === Master install on Debian ===
- * Assure plpythonu packages are installed
+ * Assure plpythonu package is installed
  * Open the master database and execute master-install.sql
 
 Command line example:
@@ -41,8 +41,8 @@ psql somedb -U someuser < master-install.sql
 }}}
 
 === Master install on Windows ===
- * Check PlPython option in Windows PostgreSQL installer (python24.dll and plpython.dll must exist in C:\Archivos de programa\PostgreSQL\8.1\lib\ or equivalent)
- * Double-click on master-install and complete server, database and username, or open PgAdmin III manually and copy and paste manually in a query window.
+ * Check PlPython option in Windows PostgreSQL installer (python24.dll and plpython.dll must exist in C:\Program Files\PostgreSQL\8.1\lib\ or equivalent)
+ * Double-click on master-install.sql and complete server, database and username, or open PgAdmin III and copy and paste manually in a query window.
 
 
 == Slave Install ==
@@ -50,8 +50,9 @@ psql somedb -U someuser < master-install.sql
 Although python script could be run on windows, currently only linux (debian) is supported for a slave replica.
 
 === Slave install on Debian ===
+ * Restore the master database dump.
  * Install required packages (python2.4 and psycopg2)
- * Checkout files to a well-known location (ie. /usr/local/pyreplica):
+ * Checkout script files to a well-known location (ie. /usr/local/pyreplica):
  * Copy and edit a configuration file per slave database (ie. /etc/pyreplica/somedb.conf)
  * Make a link to init.d script
  * Install init.d script with update-rc.d (so it starts when machine is turned on)

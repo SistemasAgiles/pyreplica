@@ -2,7 +2,7 @@ PyReplica README (wiki format):
 
 PyReplica is another "master to multiple slaves" trigger-based replication system for PostgreSQL databases.
 
-It is programmed in Python, aimed to be simple and short, allowing:
+It is programmed in Python, aimed to be simple and flexible, allowing:
  * Easy installation
  * Easy administration
  * Easy (manual) customization
@@ -10,7 +10,7 @@ It is programmed in Python, aimed to be simple and short, allowing:
 
 It does not do:
  * Automatic Fail over
- * Conflict resolution (as a master-slave sistem, they shouldn't happen)
+ * Conflict resolution (as a master-slave system, they shouldn't happen)
 
 It consist on a plpythonu master log trigger (py_log_replica) and slave client script (pyreplica.py)
 The trigger stores a replication log (DML INSERT,UPDATE,DELETE instructions on affected tables on a replica_log table) and signals a NOTIFY message to replicas.

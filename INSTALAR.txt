@@ -1,0 +1,88 @@
+Como instalar PyReplica (wiki format):
+
+== Instalación Maestra ==
+
+Instalar este sistema de replicación en la base maestra es tan simple como ejecutar el script master-install.sql incluido.
+
+Se recomienda:
+ 1. Cerrar todos los clientes
+ 2. Realizar un respaldo (para recrear la base esclava y prevenir pérdidas de información en el proceso)
+ 3. Ejecutar el script de instalación del disparador
+ 4. Realizar pruebas simples para probar el disparador y permisos (algunas consultas INSERT, UPDATE, DELETE)
+ 5. Reiniciar todos los clientes (en este punto, la replicación estará funcionando!)
+
+
+La función py_log_create_tg('nombre tabla') automagicamente detectará la clave primaria y creará el disparador de registro. Para cada tabla procesada, mostrará si el disparador fue instalado satisfactoriamente:
+{{{
+test=# SELECT py_log_create_tg(relname::text) FROM pg_class WHERE relname !~ '^(pg_|sql_)' AND relkind = 'r' AND relname != 'replica_log' ;
+                    py_log_create_tg
+--------------------------------------------------------
+ table t has no pk constraint (couldn't be replicated)!
+ created trigger on tt (id1,id2)
+ created trigger on student (id)
+(3 rows)
+}}}
+
+ * La Tabla t no puede ser replicada porque no tiene clave primaria, por lo que el disparador no fue instalado.
+ * El disparador fue correctamente instalado en la tabla tt y student
+
+
+Para instalar el disparador manualmente en una tabla, se puede ejecutar py_log_create_tg('tablename') o usar directamente la instrucción CREATE TRIGGER (ver el archivo sql).
+
+
+=== Instalación Maestra en Debian ===
+ * Asegurarse que el paquete plpythonu este instalado
+ * Abrir la base de datos y ejecutar master-install.sql
+
+Ejemplo de linea de comando:
+{{{
+apt-get install postgresql-plpython-8.1
+psql somedb -U someuser < master-install.sql
+}}}
+
+=== Instalación Maestra en Windows ===
+ * Verificar la opción PlPython en el instalador de PostgreSQL de  Windows (python24.dll and plpython.dll deben existir en C:\Archivos de programa\PostgreSQL\8.1\lib\ or equivalent)
+ * Double-click en master-install.sql y completar el servidor, base de datos y nombre de usario, o abrir PgAdmin III y copiar y pegar manualmente en una ventana de consulta.
+
+
+== Instalación Esclava ==
+
+Aunque el script python podría ejecutarse en windows, actualmente solo se soporta linux (debian) para la replica esclava.
+
+=== Instalación Esclava en Debian ===
+ * Restaurar el resguardo de la base de datos maestra
+ * Instalar los paquetes requeridos (python2.4 y psycopg2)
+ * Bajar los archivos de script a una ubicación bien definida (ej. /usr/local/pyreplica):
+ * Copiar y modificar la configuración por cada base de datos esclava (ej. /etc/pyreplica/somedb.conf)
+ * Hacer un enlace al script init.d
+ * Instalar el script init.d con update-rc.d (asi se inicia cuando la maquina se prende)
+ * Iniciar pyreplica
+
+Ejemplo de linea de comando:
+{{{
+apt-get install python2.4 python-psycopg2
+svn co http://www.nsis.com.ar/svn/pyreplica /usr/local/pyreplica
+cp /usr/local/pyreplica/sample.conf /etc/pyreplica/somedb.conf
+vi /etc/pyreplica/somedb.conf
+ln /usr/local/pyreplica/init.d-sample.sh /etc/init.d/pyreplica -sf
+update-rc.d pyreplica defaults
+/etc/init.d/pyreplica start
+}}}
+
+En somedb.conf se debe tener configurado la ubicación del archivo de registro (usualmente /var/log/somedb-pyreplica.log), se pude inspeccionar este archivo y ver que esta sucediendo:
+{{{
+Sun Jun  1 14:52:32 2008 Opening origin (master) connection
+Sun Jun  1 14:52:34 2008 Opening replica (slave) connection
+Sun Jun  1 14:52:34 2008 Encoding for this connections are UTF8 UTF8
+Sun Jun  1 14:52:34 2008 Executing: UPDATE "test" SET "a"='123' WHERE "id2"='1' AND "id2"='2'
+Sun Jun  1 18:50:34 2008 Waiting for 'NOTIFY'
+Sun Jun  1 18:51:34 2008 Timeout(''keepalive'')!
+Sun Jun  1 18:51:34 2008 Waiting for 'NOTIFY'
+Sun Jun  1 18:52:34 2008 Timeout(''keepalive'')!
+}}}
+
+Si falla, se puede ejecutar pyreplica.py directamente para ver la salida directamente en la consola:
+{{{
+python pyreplica.py "dbname=master user=postgres host=remotehost" "dbname=slave user=postgres host=localhost"
+}}}
+(cambiar dbname, user, password y host)!
