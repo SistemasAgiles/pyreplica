@@ -11,7 +11,13 @@ $BODY$
   # function to convert value from python to postgres representation
   def mogrify(v):
     if v is None: return 'NULL' 
-    if isinstance(v,basestring): return repr(v)
+    if isinstance(v,basestring): 
+       r = repr(v)
+       if not r.startswith('\"'):
+          return r
+       else:
+          # postgres doesn't support ", replace and escape '
+          return "'%s'" % r.replace("'","\\'")[1:-1]
     return "'%s'" % repr(v) # to get rid of bool that are passed as ints (solved in pg8.3)
 
   # retrieve or prepare plan for faster processing
@@ -70,7 +76,7 @@ $BODY$
 -- create log table (where sql replica queries are stored):
 
 CREATE TABLE replica_log (
- id SERIAL,
+ id SERIAL PRIMARY KEY,
  sql TEXT,
  ts TIMESTAMP DEFAULT now()
 ) WITHOUT OIDS ;
