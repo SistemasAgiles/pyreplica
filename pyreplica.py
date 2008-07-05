@@ -25,7 +25,7 @@ TIMEOUT = 60 	# time (in seconds) between selects
 # don't modify anything below tis line (except for experimenting)
 
 import sys
-import psycopg2
+import psycopg2,psycopg2.extensions
 import select
 import time
 import os
@@ -83,7 +83,9 @@ con1 = psycopg2.connect(DSN1)
 debug("Encoding for this connections are %s %s" % 
   (con0.encoding,con1.encoding), level=2)
 
-con0.set_isolation_level(0)
+# set isolation level to prevent read problems
+con0.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_SERIALIZABLE)
+con1.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_SERIALIZABLE)
 cur0 = con0.cursor()
 cur1 = con1.cursor()
 
