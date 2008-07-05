@@ -78,6 +78,7 @@ $BODY$
 CREATE TABLE replica_log (
  id SERIAL PRIMARY KEY,
  sql TEXT,
+ replicated BOOLEAN DEFAULT FALSE,
  ts TIMESTAMP DEFAULT now()
 ) WITHOUT OIDS ;
 
