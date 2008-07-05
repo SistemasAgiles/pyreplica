@@ -57,21 +57,20 @@ def debug(message,level=1):
 def replicate(cur0,cur1):
     "Process remote replication log (cur0: master, cur1: slave)"
     try:
-        # First, obtain last replicated id ("revision")
-        cur1.execute("SELECT last_value FROM replica_log_id_seq")
-        id = cur1.fetchone()[0]
-        # Query replica data from last id
-        cur0.execute("SELECT id,sql FROM replica_log WHERE id>%s ORDER BY id ASC",(id,))
+        # Query un-replicated data (lock rows to prevent data loss)
+        cur0.execute("SELECT id,sql FROM replica_log WHERE NOT replicated "
+                     "ORDER BY id ASC FOR UPDATE")
         for row in cur0:
             # Execute replica queries
             debug("Executing: %s" % row[1], level=2)
             cur1.execute(row[1])
-            id = row[0]
-            # set up last replicated id
-            cur1.execute("SELECT setval('replica_log_id_seq'::regclass,%s)",(id,))
-            cur1.connection.commit()
+        # set up last replicated id
+        cur0.execute("UPDATE replica_log SET replicated=TRUE WHERE NOT replicated")
+        cur1.connection.commit()
+        cur0.connection.commit()
     except Exception, e:
         cur1.connection.rollback()
+        cur0.connection.rollback()
         raise
 
 debug("DSN0: %s" % DSN0, level=3)
