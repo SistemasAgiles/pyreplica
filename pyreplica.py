@@ -64,10 +64,11 @@ def replicate(cur0,cur1):
             # Execute replica queries
             debug("Executing: %s" % row[1], level=2)
             cur1.execute(row[1])
-        # set up last replicated id
-        cur0.execute("UPDATE replica_log SET replicated=TRUE WHERE NOT replicated")
-        cur1.connection.commit()
-        cur0.connection.commit()
+        if cur0.rowcount:
+            # mark replicated data
+            cur0.execute("UPDATE replica_log SET replicated=TRUE WHERE NOT replicated")
+            cur1.connection.commit()
+            cur0.connection.commit()
     except Exception, e:
         cur1.connection.rollback()
         cur0.connection.rollback()
@@ -83,9 +84,6 @@ con1 = psycopg2.connect(DSN1)
 debug("Encoding for this connections are %s %s" % 
   (con0.encoding,con1.encoding), level=2)
 
-# set isolation level to prevent read problems
-con0.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_SERIALIZABLE)
-con1.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_SERIALIZABLE)
 cur0 = con0.cursor()
 cur1 = con1.cursor()
 
@@ -94,7 +92,12 @@ replicate(cur0,cur1)
 
 # main loop:
 try:
+    # set isolation level for LISTEN 
+    con0.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT)
     cur0.execute('LISTEN "replicas"')
+    # set isolation level to prevent read problems
+    con0.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_SERIALIZABLE)
+    con1.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_SERIALIZABLE)
     while 1:
         debug("Waiting for 'NOTIFY'")
         if select.select([cur0],[],[], TIMEOUT)==([],[],[]):
