@@ -26,9 +26,11 @@ TIMEOUT = 60 	# time (in seconds) between selects
 
 import sys
 import psycopg2,psycopg2.extensions
+import tpc
 import select
 import time
 import os
+import md5
 
 # find connection strings
 if len(sys.argv)==3:
@@ -56,6 +58,33 @@ def debug(message,level=1):
 
 def replicate(cur0,cur1):
     "Process remote replication log (cur0: master, cur1: slave)"
+    con0 = cur0.connection
+    con1 = cur1.connection
+    
+    # create a unique TPC transaction id
+    tpc_xid = con0.xid(0, 'pyreplica %s' % md5.md5(con0.dsn).hexdigest(),'')
+
+    # test if there is a prepared transaction in origin or replica
+    tpc_xid0_pepared = tpc_xid in con0.tpc_recover()
+    tpc_xid1_pepared = tpc_xid in con1.tpc_recover()
+    if tpc_xid0_pepared and tpc_xid1_pepared:
+        # commit both
+        print "commit both"
+        con0.tpc_commit(tpc_xid)
+        con1.tpc_commit(tpc_xid)
+        print "commit con0 and con1"
+    elif tpc_xid0_pepared:
+        # rollback origin (replica prepare failed)
+        con0.tpc_rollback(tpc_xid)
+        print "rollback con0"
+    elif tpc_xid1_pepared: 
+        # commit replica (origin commit was successful)
+        con1.tpc_commit(tpc_xid)
+        print "commit con1"
+
+    # begin TPC transactions on both databases
+    con0.tpc_begin(tpc_xid)
+    con1.tpc_begin(tpc_xid)
     try:
         # Query un-replicated data (lock rows to prevent data loss)
         cur0.execute("SELECT id,sql FROM replica_log WHERE NOT replicated "
@@ -67,20 +96,25 @@ def replicate(cur0,cur1):
         if cur0.rowcount:
             # mark replicated data
             cur0.execute("UPDATE replica_log SET replicated=TRUE WHERE NOT replicated")
-            cur1.connection.commit()
-            cur0.connection.commit()
+            # prepare first phase of TPC transaction
+            con0.tpc_prepare()
+            con1.tpc_prepare()
+            # commit second phase of TPC transaction
+            con0.tpc_commit()
+            con1.tpc_commit()
     except Exception, e:
-        cur1.connection.rollback()
-        cur0.connection.rollback()
+        # something failed, try to resolve next time
+        # (the connections may be in a unrecoverable status or disconected)
         raise
 
 debug("DSN0: %s" % DSN0, level=3)
 debug("DSN1: %s" % DSN1, level=3)
 
+# create two-phase-commit connections:
 debug("Opening origin (master) connection")
-con0 = psycopg2.connect(DSN0)
+con0 = psycopg2.connect(DSN0,connection_factory=tpc.TwoPhaseCommitConnection)
 debug("Opening replica (slave) connection")
-con1 = psycopg2.connect(DSN1)
+con1 = psycopg2.connect(DSN1,connection_factory=tpc.TwoPhaseCommitConnection)
 debug("Encoding for this connections are %s %s" % 
   (con0.encoding,con1.encoding), level=2)
 
