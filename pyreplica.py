@@ -21,6 +21,7 @@ DSN0 = None 	# origin (master), may be passwd in argv or environ
 DSN1 = None 	# replica (slave), may be passed in argv or environ
 DEBUG = 2	# 1: normal, 2: verbose
 TIMEOUT = 60 	# time (in seconds) between selects
+USERNAME = 'replica'
 
 # don't modify anything below tis line (except for experimenting)
 
@@ -87,8 +88,9 @@ def replicate(cur0,cur1):
     con1.tpc_begin(tpc_xid)
     try:
         # Query un-replicated data (lock rows to prevent data loss)
-        cur0.execute("SELECT id,sql FROM replica_log WHERE NOT replicated "
-                     "ORDER BY id ASC FOR UPDATE")
+        cur0.execute("SELECT id,sql FROM replica_log "
+                     "WHERE NOT replicated AND username<>%s " 
+                     "ORDER BY id ASC FOR UPDATE" ,(USERNAME,))
         for row in cur0:
             # Execute replica queries
             debug("Executing: %s" % row[1], level=2)
@@ -133,13 +135,20 @@ try:
     con0.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_SERIALIZABLE)
     con1.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_SERIALIZABLE)
     while 1:
-        debug("Waiting for 'NOTIFY'")
+        debug("Waiting for 'NOTIFY'",level=3)
         if select.select([cur0],[],[], TIMEOUT)==([],[],[]):
-            debug("Timeout(''keepalive'')!")
+            debug("Timeout(''keepalive'')!",level=3)
         else:
             if cur0.isready():
-                debug("Got NOTIFY: %s" % str(cur0.connection.notifies.pop()))
+                debug("Got NOTIFY: %s" % str(cur0.connection.notifies.pop()),level=3)
                 replicate(cur0,cur1)
+        
+        con0.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT)
+        cur0.execute('SELECT now()')
+        debug("Keepalive0: %s" % cur0.fetchone()[0])
+        con0.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_SERIALIZABLE)
+        cur1.execute('SELECT now()')
+        debug("Keepalive1: %s" % cur1.fetchone()[0])
 except Exception, e:
     debug("FATAL ERROR: %s" % str(e))
     raise
