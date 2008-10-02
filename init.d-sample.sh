@@ -14,21 +14,26 @@
 # WARNING: very simple approach, no error checking, pidfiles, etc.
 
 PATH=/bin:/usr/bin:/sbin:/usr/sbin
-DAEMON=/usr/local/pyreplica/pyreplica.sh
-CONFIG_FILES=`ls /etc/pyreplica/*.conf`
+DAEMON=/usr/local/pyreplica/daemon.py
+NAME=pyreplica
+DESC="postgresql python replicator"
+PID_FILE=/var/run/$NAME.pid
+
+test -f $DAEMON || exit 0
+
+set -e
 
 case "$1" in
     start)
-	echo -n "Starting postgresql python replicator: pyreplica "
-	start-stop-daemon --start --name pyreplica.sh --exec $DAEMON -- $CONFIG_FILES
-	echo "."
+        echo -n "Starting $DESC: "
+        start-stop-daemon --start --quiet --pidfile $PID_FILE --exec $DAEMON
+        echo "$NAME."
     ;;
 
     stop)
-	echo -n "Stopping postgresql python replicator: pyreplica"
-	start-stop-daemon --name pyreplica.sh  --stop
-	start-stop-daemon --name pyreplica.py  --stop
-	echo "."
+        echo -n "Stopping $DESC: "
+        start-stop-daemon --stop --quiet --pidfile $PID_FILE
+        echo "$NAME."
     ;;
 
     restart)

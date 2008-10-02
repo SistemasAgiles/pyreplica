@@ -33,23 +33,6 @@ import time
 import os
 import md5
 
-# find connection strings
-if len(sys.argv)==3:
-    DSN0 = sys.argv[1] 	
-    DSN1 = sys.argv[2] 	
-else:
-    DSN0 = os.environ.get("DSN0",DSN0)
-    DSN1 = os.environ.get("DSN1",DSN1)
-
-if not DSN0 or not DSN1:
-    print "Usage: %s DSN0 DSN1" % sys.argv[0]
-    print "or pass DSN0 and DSN1 via the enviroment, or configure this script"
-    print "where DNS are valid postgresql connection strings:"
-    print " * DSN0: origin. example: \"dbname=master user=postgres host=remotehost\""
-    print " * DSN1: replica. example: \"dbname=replica user=postgres host=localhost\""
-    sys.exit(1)    
-
-
 def debug(message,level=1):
     "Print a debug message"
     if DEBUG>=level:
@@ -57,7 +40,7 @@ def debug(message,level=1):
         # flush buffers
         sys.stdout.flush()       
 
-def replicate(cur0,cur1):
+def replicate(cur0, cur1, debug):
     "Process remote replication log (cur0: master, cur1: slave)"
     con0 = cur0.connection
     con1 = cur1.connection
@@ -70,18 +53,17 @@ def replicate(cur0,cur1):
     tpc_xid1_pepared = tpc_xid in con1.tpc_recover()
     if tpc_xid0_pepared and tpc_xid1_pepared:
         # commit both
-        print "commit both"
         con0.tpc_commit(tpc_xid)
         con1.tpc_commit(tpc_xid)
-        print "commit con0 and con1"
+        debug("commit con0 and con1", level=2)
     elif tpc_xid0_pepared:
         # rollback origin (replica prepare failed)
         con0.tpc_rollback(tpc_xid)
-        print "rollback con0"
+        debug("rollback con0", level=2)
     elif tpc_xid1_pepared: 
         # commit replica (origin commit was successful)
         con1.tpc_commit(tpc_xid)
-        print "commit con1"
+        debug("commit con1", level=2)
 
     # begin TPC transactions on both databases
     con0.tpc_begin(tpc_xid)
@@ -104,51 +86,80 @@ def replicate(cur0,cur1):
             # commit second phase of TPC transaction
             con0.tpc_commit()
             con1.tpc_commit()
-    except Exception, e:
+    except Exception:
         # something failed, try to resolve next time
         # (the connections may be in a unrecoverable status or disconected)
         raise
 
-debug("DSN0: %s" % DSN0, level=3)
-debug("DSN1: %s" % DSN1, level=3)
+def connect(dsn0, dsn1, debug):
+    debug("DSN0: %s" % dsn0, level=3)
+    debug("DSN1: %s" % dsn1, level=3)
+    try:
+        # create two-phase-commit connections:
+        debug("Opening origin (master) connection")
+        con0 = psycopg2.connect(dsn0,connection_factory=tpc.TwoPhaseCommitConnection)
+        debug("Opening replica (slave) connection")
+        con1 = psycopg2.connect(dsn1,connection_factory=tpc.TwoPhaseCommitConnection)
+        debug("Encoding for this connections are %s %s" % 
+          (con0.encoding,con1.encoding), level=2)
 
-# create two-phase-commit connections:
-debug("Opening origin (master) connection")
-con0 = psycopg2.connect(DSN0,connection_factory=tpc.TwoPhaseCommitConnection)
-debug("Opening replica (slave) connection")
-con1 = psycopg2.connect(DSN1,connection_factory=tpc.TwoPhaseCommitConnection)
-debug("Encoding for this connections are %s %s" % 
-  (con0.encoding,con1.encoding), level=2)
+        return con0, con1
+    except Exception,e:
+        debug("connect(): FATAL ERROR: %s" % str(e))
+        raise
+    
+def main_loop(dsn0, dsn1, is_killed=lambda:False, debug=debug):
+    con0, con1 = connect(dsn0, dsn1, debug)
+    cur0 = con0.cursor()
+    cur1 = con1.cursor()
 
-cur0 = con0.cursor()
-cur1 = con1.cursor()
+    # process previous logs:
+    replicate(cur0, cur1, debug)
 
-# process previous logs:
-replicate(cur0,cur1)
-
-# main loop:
-try:
-    # set isolation level for LISTEN 
-    con0.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT)
-    cur0.execute('LISTEN "replicas"')
-    # set isolation level to prevent read problems
-    con0.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_SERIALIZABLE)
-    con1.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_SERIALIZABLE)
-    while 1:
-        debug("Waiting for 'NOTIFY'",level=3)
-        if select.select([cur0],[],[], TIMEOUT)==([],[],[]):
-            debug("Timeout(''keepalive'')!",level=3)
-        else:
-            if cur0.isready():
-                debug("Got NOTIFY: %s" % str(cur0.connection.notifies.pop()),level=3)
-                replicate(cur0,cur1)
-        
+    # main loop:
+    try:
+        # set isolation level for LISTEN 
         con0.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT)
-        cur0.execute('SELECT now()')
-        debug("Keepalive0: %s" % cur0.fetchone()[0])
+        cur0.execute('LISTEN "replicas"')
+        # set isolation level to prevent read problems
         con0.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_SERIALIZABLE)
-        cur1.execute('SELECT now()')
-        debug("Keepalive1: %s" % cur1.fetchone()[0])
-except Exception, e:
-    debug("FATAL ERROR: %s" % str(e))
-    raise
+        con1.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_SERIALIZABLE)
+        while 1:
+            debug("Waiting for 'NOTIFY'",level=3)
+            if select.select([cur0],[],[], TIMEOUT)==([],[],[]):
+                debug("Timeout!",level=3)
+                if is_killed():
+                    raise SystemExit()
+            else:
+                if cur0.isready():
+                    debug("main_loop():Got NOTIFY: %s" % str(cur0.connection.notifies.pop()),level=3)
+                    replicate(cur0,cur1,debug)
+            
+            con0.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT)
+            cur0.execute('SELECT now()')
+            debug("main_loop():Keepalive0: %s" % cur0.fetchone()[0])
+            con0.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_SERIALIZABLE)
+            cur1.execute('SELECT now()')
+            debug("main_loop():Keepalive1: %s" % cur1.fetchone()[0])
+    except Exception, e:
+        debug("main_loop():FATAL ERROR: %s" % str(e))
+        raise 
+
+if __name__=="__main__":
+    # find connection strings from argv or environ
+    if len(sys.argv)==3:
+        DSN0 = sys.argv[1] 	
+        DSN1 = sys.argv[2] 	
+    else:
+        DSN0 = os.environ.get("DSN0",DSN0)
+        DSN1 = os.environ.get("DSN1",DSN1)
+
+    if not DSN0 or not DSN1:
+        print "Usage: %s DSN0 DSN1" % sys.argv[0]
+        print "or pass DSN0 and DSN1 via the enviroment, or configure this script"
+        print "where DNS are valid postgresql connection strings:"
+        print " * DSN0: origin. example: \"dbname=master user=postgres host=remotehost\""
+        print " * DSN1: replica. example: \"dbname=replica user=postgres host=localhost\""
+        sys.exit(1)
+    con0,con1 = main_loop(DSN0,DSN1)
+    sys.exit(1)
