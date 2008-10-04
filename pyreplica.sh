@@ -38,6 +38,7 @@ case "$1" in
 
     restart)
         $0 stop || true
+        sleep 65
         $0 start
     ;;
 

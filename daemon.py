@@ -35,6 +35,8 @@ class Log:
     def write(self, s):
         self.f.write(s)
         self.f.flush()
+    def flush(self):
+        self.f.flush()
 
 class Replicator(threading.Thread):
     def __init__(self,config_file):
@@ -80,6 +82,8 @@ class Replicator(threading.Thread):
         try:
             self.debug("Sending mail: %s" % subject,2)
             s = SMTP(self.smtp_server)
+            s.ehlo()
+            s.login(self.username,self.password)
             s.sendmail(self.from_addr, self.to_addrs, msg.as_string())
         except Exception,e:
             self.debug("Exception while sending mail: %s" % str(e))
@@ -141,8 +145,12 @@ if __name__ == "__main__":
     signal.signal(signal.SIGTERM,lambda *args: 1)
     # wait for any signal
     signal.pause()
+    print "Got a signal, killing threads..."
     # "kill" pending thread
     for thread in threads:
         thread.stop()
+    
+    for thread in threads:
         # wait until it terminates
         thread.join()
+    print "Threads killed ok"

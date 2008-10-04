@@ -86,6 +86,10 @@ def replicate(cur0, cur1, debug):
             # commit second phase of TPC transaction
             con0.tpc_commit()
             con1.tpc_commit()
+        else:
+            # rollback prepared TPC transaction
+            con0.tpc_rollback()
+            con1.tpc_rollback()
     except Exception:
         # something failed, try to resolve next time
         # (the connections may be in a unrecoverable status or disconected)
@@ -124,25 +128,35 @@ def main_loop(dsn0, dsn1, is_killed=lambda:False, debug=debug):
         # set isolation level to prevent read problems
         con0.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_SERIALIZABLE)
         con1.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_SERIALIZABLE)
-        while 1:
+        while not is_killed():
             debug("Waiting for 'NOTIFY'",level=3)
             if select.select([cur0],[],[], TIMEOUT)==([],[],[]):
                 debug("Timeout!",level=3)
-                if is_killed():
-                    raise SystemExit()
             else:
                 if cur0.isready():
                     debug("main_loop():Got NOTIFY: %s" % str(cur0.connection.notifies.pop()),level=3)
                     replicate(cur0,cur1,debug)
             
-            con0.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT)
             cur0.execute('SELECT now()')
+            con0.commit()
             debug("main_loop():Keepalive0: %s" % cur0.fetchone()[0])
-            con0.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_SERIALIZABLE)
             cur1.execute('SELECT now()')
+            con1.commit()
             debug("main_loop():Keepalive1: %s" % cur1.fetchone()[0])
+        raise SystemExit()
     except Exception, e:
         debug("main_loop():FATAL ERROR: %s" % str(e))
+        # some cleanup
+        try:
+            if con0 and not con0.closed:
+                con0.close()
+        except:
+            pass
+        try:
+            if con1 and not con1.closed:
+                con1.close()
+        except:
+            pass
         raise 
 
 if __name__=="__main__":
@@ -161,5 +175,5 @@ if __name__=="__main__":
         print " * DSN0: origin. example: \"dbname=master user=postgres host=remotehost\""
         print " * DSN1: replica. example: \"dbname=replica user=postgres host=localhost\""
         sys.exit(1)
-    con0,con1 = main_loop(DSN0,DSN1)
+    main_loop(DSN0,DSN1)
     sys.exit(1)
