@@ -40,41 +40,46 @@ def debug(message,level=1):
         # flush buffers
         sys.stdout.flush()       
 
-def replicate(cur0, cur1, debug):
-    "Process remote replication log (cur0: master, cur1: slave)"
+def replicate(cur0, cur1, skip_user, debug):
+    "Process remote replication log (cur0: master cursor, cur1: slave cursor)"
     con0 = cur0.connection
     con1 = cur1.connection
     
-    # create a unique TPC transaction id
-    tpc_xid = con0.xid(0, 'pyreplica %s' % md5.md5(con0.dsn).hexdigest(),'')
+    # create a unique TPC transaction id 
+    # (they diffier because they can apply to the same backend)
+    tpc_xid0 = con0.xid(0, 'pyreplica0 %s' % md5.md5(con0.dsn).hexdigest(),'')
+    tpc_xid1 = con1.xid(0, 'pyreplica1 %s' % md5.md5(con0.dsn).hexdigest(),'')
 
-    # test if there is a prepared transaction in origin or replica
-    tpc_xid0_pepared = tpc_xid in con0.tpc_recover()
-    tpc_xid1_pepared = tpc_xid in con1.tpc_recover()
+    # test if there is a prepared transaction in mater or slave
+    tpc_xid0_pepared = tpc_xid0 in con0.tpc_recover()
+    tpc_xid1_pepared = tpc_xid1 in con1.tpc_recover()
     if tpc_xid0_pepared and tpc_xid1_pepared:
         # commit both
-        con0.tpc_commit(tpc_xid)
-        con1.tpc_commit(tpc_xid)
-        debug("commit con0 and con1", level=2)
+        con0.tpc_commit(tpc_xid0)
+        con1.tpc_commit(tpc_xid1)
+        debug("tpc_commit con0 and con1", level=3)
     elif tpc_xid0_pepared:
         # rollback origin (replica prepare failed)
-        con0.tpc_rollback(tpc_xid)
-        debug("rollback con0", level=2)
+        con0.tpc_rollback(tpc_xid0)
+        debug("tpc_rollback con0", level=3)
     elif tpc_xid1_pepared: 
         # commit replica (origin commit was successful)
-        con1.tpc_commit(tpc_xid)
-        debug("commit con1", level=2)
+        con1.tpc_commit(tpc_xid1)
+        debug("tpc_commit con1", level=3)
 
     # begin TPC transactions on both databases
-    con0.tpc_begin(tpc_xid)
-    con1.tpc_begin(tpc_xid)
+    con0.tpc_begin(tpc_xid0)
+    con1.tpc_begin(tpc_xid1)
     try:
+        # ignore some user? (multimaster setup)
+        sql = skip_user and " AND username<>%s " or ""
+        args = skip_user and (skip_user,) or ()
         # Query un-replicated data (lock rows to prevent data loss)
         cur0.execute("SELECT id,sql FROM replica_log "
-                     "WHERE NOT replicated AND username<>%s " 
-                     "ORDER BY id ASC FOR UPDATE" ,(USERNAME,))
+                     "WHERE NOT replicated %s " 
+                     "ORDER BY id ASC FOR UPDATE" % sql ,args)
         for row in cur0:
-            # Execute replica queries
+            # Execute replica queries in slave
             debug("Executing: %s" % row[1], level=2)
             cur1.execute(row[1])
         if cur0.rowcount:
@@ -96,6 +101,7 @@ def replicate(cur0, cur1, debug):
         raise
 
 def connect(dsn0, dsn1, debug):
+    "Connect to databases (dsn0: master, dsn1: slave)"
     debug("DSN0: %s" % dsn0, level=3)
     debug("DSN1: %s" % dsn1, level=3)
     try:
@@ -112,13 +118,21 @@ def connect(dsn0, dsn1, debug):
         debug("connect(): FATAL ERROR: %s" % str(e))
         raise
     
-def main_loop(dsn0, dsn1, is_killed=lambda:False, debug=debug):
+def main_loop(dsn0, dsn1, is_killed, skip_user, keepalive, debug=debug):
+    """Open connections, listen for signals and process replica logs (forever)
+     * dsn0: master database connection string
+     * dsn1: slave database connection string
+     * is_killed: function to check if this thread has been killed (os signal)
+     * skip_user: do not replay logs of this user (useful in multimaster setup)
+     * keepaive: if true, do a simple query to keep alive the db connection 
+     * debug: function to write to the logfile
+    """
     con0, con1 = connect(dsn0, dsn1, debug)
     cur0 = con0.cursor()
     cur1 = con1.cursor()
 
     # process previous logs:
-    replicate(cur0, cur1, debug)
+    replicate(cur0, cur1, skip_user, debug)
 
     # main loop:
     try:
@@ -135,14 +149,14 @@ def main_loop(dsn0, dsn1, is_killed=lambda:False, debug=debug):
             else:
                 if cur0.isready():
                     debug("main_loop():Got NOTIFY: %s" % str(cur0.connection.notifies.pop()),level=3)
-                    replicate(cur0,cur1,debug)
-            
-            cur0.execute('SELECT now()')
-            con0.commit()
-            debug("main_loop():Keepalive0: %s" % cur0.fetchone()[0])
-            cur1.execute('SELECT now()')
-            con1.commit()
-            debug("main_loop():Keepalive1: %s" % cur1.fetchone()[0])
+                    replicate(cur0,cur1,skip_user,debug)
+            if keepalive:
+                cur0.execute('SELECT now()')
+                con0.commit()
+                debug("main_loop():Keepalive0: %s" % cur0.fetchone()[0])
+                cur1.execute('SELECT now()')
+                con1.commit()
+                debug("main_loop():Keepalive1: %s" % cur1.fetchone()[0])
         raise SystemExit()
     except Exception, e:
         debug("main_loop():FATAL ERROR: %s" % str(e))
@@ -175,5 +189,5 @@ if __name__=="__main__":
         print " * DSN0: origin. example: \"dbname=master user=postgres host=remotehost\""
         print " * DSN1: replica. example: \"dbname=replica user=postgres host=localhost\""
         sys.exit(1)
-    main_loop(DSN0,DSN1)
+    main_loop(DSN0,DSN1,is_killed=lambda:False, skip_user='', keepalive = True)
     sys.exit(1)
