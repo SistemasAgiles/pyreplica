@@ -1,5 +1,7 @@
 PyReplica HISTORY:
 
+ * 2008-10-06: 1.0.4 - enhanced daemon (threads, mail notification, etc.) and several major fixes
+ * 2008-08-04: 1.0.3 - two phase commit to assure updates on both servers - thanks again to Marko Kreen
  * 2008-07-05: 1.0.2 - fix to possible long transactions and sequence problems - thanks to Marko Kreen
  * 2008-06-28: 1.0.1 - minor fixes
  * 2008-06-04: 1.0 - orignial version

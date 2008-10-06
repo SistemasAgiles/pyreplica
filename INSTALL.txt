@@ -47,7 +47,8 @@ psql somedb -U someuser < master-install.sql
 
 == Slave Install ==
 
-Although python script could be run on windows, currently only linux (debian) is supported for a slave replica.
+Although python script could be run on windows, currently the replication daemon is supported only linux (debian). 
+Note: psycopg on windows doesn't come with select support by default, and after compiling it, it seems not to work correctly (connection is unexpectedly closed when you use listen and transactions)
 
 === Slave install on Debian ===
  * Restore the master database dump.
@@ -55,6 +56,7 @@ Although python script could be run on windows, currently only linux (debian) is
  * Checkout script files to a well-known location (ie. /usr/local/pyreplica):
  * Copy and edit a configuration file per slave database (ie. /etc/pyreplica/somedb.conf)
  * Make a link to init.d script
+ * Create pyreplica user (check uid/gid in your system and update daemon.py)
  * Install init.d script with update-rc.d (so it starts when machine is turned on)
  * Start pyreplica
 
@@ -64,21 +66,22 @@ apt-get install python2.4 python-psycopg2
 svn co http://www.nsis.com.ar/svn/pyreplica /usr/local/pyreplica
 cp /usr/local/pyreplica/sample.conf /etc/pyreplica/somedb.conf
 vi /etc/pyreplica/somedb.conf
-ln /usr/local/pyreplica/init.d-sample.sh /etc/init.d/pyreplica -sf
+ln /usr/local/pyreplica/pyreplica.sh /etc/init.d/pyreplica -sf
+useradd pyreplica -g 103 -u 103
 update-rc.d pyreplica defaults
 /etc/init.d/pyreplica start
 }}}
 
-In somedb.conf you should have configured the log file path (usually /var/log/somedb-pyreplica.log), you can inspect that file and see what is happening:
+In the log file (usually /var/log/pyreplica.log), you can see what is happening:
 {{{
-Sun Jun  1 14:52:32 2008 Opening origin (master) connection
-Sun Jun  1 14:52:34 2008 Opening replica (slave) connection
-Sun Jun  1 14:52:34 2008 Encoding for this connections are UTF8 UTF8
-Sun  Jun  1 14:52:34 2008 Executing: UPDATE "test" SET "a"='123' WHERE "id2"='1' AND "id2"='2'
-Sun Jun  1 18:50:34 2008 Waiting for 'NOTIFY'
-Sun Jun  1 18:51:34 2008 Timeout(''keepalive'')!
-Sun Jun  1 18:51:34 2008 Waiting for 'NOTIFY'
-Sun Jun  1 18:52:34 2008 Timeout(''keepalive'')!
+somedb Sun Jun  1 14:52:32 2008 Opening origin (master) connection
+somedb Sun Jun  1 14:52:34 2008 Opening replica (slave) connection
+somedb Sun Jun  1 14:52:34 2008 Encoding for this connections are UTF8 UTF8
+somedb Sun  Jun  1 14:52:34 2008 Executing: UPDATE "test" SET "a"='123' WHERE "id2"='1' AND "id2"='2'
+somedb Sun Jun  1 18:50:34 2008 Waiting for 'NOTIFY'
+somedb Sun Jun  1 18:51:34 2008 Timeout(''keepalive'')!
+somedb Sun Jun  1 18:51:34 2008 Waiting for 'NOTIFY'
+somedb Sun Jun  1 18:52:34 2008 Timeout(''keepalive'')!
 }}}
 
 If it fails, you can run pyreplica.py directly to get log output directly to the console:
@@ -86,3 +89,10 @@ If it fails, you can run pyreplica.py directly to get log output directly to the
 python pyreplica.py "dbname=master user=postgres host=remotehost" "dbname=slave user=postgres host=localhost"
 }}}
 (change dbname, user, password and host)!
+
+== Multi-master setup ==
+
+ * You must install trigger and daemon for both databases.
+ * In both config files, set up the parameter SKIP_USER to the name of the postgresql user who connect and process replication log (to prevent replaying own replicated logs)
+ * You must have care with secuence handling (they do not replicate). Tip: use different non-overlaping intervals on each database
+ * You must avoid conflicts or use your own conflict resolution schema.

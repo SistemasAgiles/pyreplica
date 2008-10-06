@@ -2,25 +2,31 @@ PyReplica LEEME (wiki format):
 
 PyReplica es un replicador asincrónico maestro-esclavo simple para PostgreSQL basado en Python, usando un disparador maestro en plpython, señales, secuencias, y un script cliente en python (influenciado por slony & londiste, pero mucho más simple y fácil). 
 
+Soporta además una configuración de multi-maestro asincrónica "perezosa" (replicación en ambos sentidos, cada base de datos es un maestro y un esclavo al mismo tiempo). Cuidado: ud., o su aplicación, deberá tener en cuenta el manejo de secuencias y la resolución de conflictos.
+
 Esta programado en Python, apuntando a ser simple y flexible, permitiendo:
  * Fácil instalación (simplemente ejecutar un script sql en el servidor, y copiar un script demonio en el cliente, no se requiere compilación)
  * Fácil administración (en general no necesita administración para el uso normal, no es necesario aprender un nuevo conjunto de comandos o marco de trabajo)
  * Fácil adaptación (manual) (scripts python simple y extensibles, permitiendo filtrar y/o transformar los datos replicados)
  * Eficiencia (bajo impacto de uso de memoria y red, sin polling)
+ * Multiplataforma: corre bajo linux y windos. Probado en Debian (disparador y demonio) y Windows XP (solo disparador)
 
 No hace:
  * Fail over automático
- * Resolución de conflictos (como un sistema maestro/esclavo, esto no debería suceder)
+ * Resolución de conflictos 
  * Replicación de cambios de esquema (los comandos CREATE/ALTER/etc. deben ejecutarse manualmente en todos los servidores, igualmente la tabla replica_log puede ser usada para propagarlos)
  * No hay soporte para objetos grandes (replica basada en el oid podría ser soportada en próximas versiones)
 
-Consiste en un disparador plpythonu de registro (py_log_replica) y un script esclavo (pyreplica.py)
+Consiste en un disparador plpythonu de registro (py_log_replica) y un script demonio esclavo (pyreplica.py y daemon.py)
 El disparador almacena un registro de replicación (instrucciones de manipulación de datos INSERT,UPDATE,DELETE sobre las tablas afectadas en la tabla replica_log) y señala con un mensaje NOTIFY a las replicas.
 El script esclavo cliente se conecta a ambas bases de datos (maestra y esclava), escucha las señales NOTIFY en la base maestra, y re-ejecuta el registro de replica en la base esclava cuando llega dicha señal. Utiliza secuencias y transacciones para evitar perdida de datos. 
 
 El disparador detecta los cambios y los almacena usando la clave primaria de la base de datos. Por lo cual, si la tabla no tiene clave primaria, no puede ser replicada.
 
 Como usa señales NOTIFY, la replicación es practicamente instantánea y más eficiente (sin polling). Si el cliente esta caido y las señales NOTIFY se pierden, cuando el cliente se conecta nuevamanete, automaticamente reejecuta los datos replicados "perdidos".
+
+El script demonio de replicación usa transacciones de commit en dos fases (TPC), para asegurarse que ambos servidores se actualizaron correctamente.
+Puede configurarse para enviar notificaciones via correo electrónico (cuando el demonio de replicación inicia, se detiene o tiene algún error)
 
 Mediciones de rendimiento simple muestran que el disparador solo es un 50% más lento que uno basado en C (como en slony-I), con los beneficios de que puede ser facilmente instalado, portado, mantenido y adaptado. (ver benchmarks.txt)
 

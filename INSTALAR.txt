@@ -47,7 +47,8 @@ psql somedb -U someuser < master-install.sql
 
 == Instalación Esclava ==
 
-Aunque el script python podría ejecutarse en windows, actualmente solo se soporta linux (debian) para la replica esclava.
+Aunque el script python podría ejecutarse en windows, actualmente solo se soporta linux (debian) para el demonio de replicación esclavo.
+Note: psycopg en windows no viene con el soporte para select por defecto, y después de haberlo compilado, parece no funcionar correctamente (la conexión es cerrada inesperadamente cuando se usan transacciones y listen)
 
 === Instalación Esclava en Debian ===
  * Restaurar el resguardo de la base de datos maestra
@@ -55,6 +56,7 @@ Aunque el script python podría ejecutarse en windows, actualmente solo se soport
  * Bajar los archivos de script a una ubicación bien definida (ej. /usr/local/pyreplica):
  * Copiar y modificar la configuración por cada base de datos esclava (ej. /etc/pyreplica/somedb.conf)
  * Hacer un enlace al script init.d
+ * Agregar el usuario pyreplica (chequear uid/gid en su sistema y actualizar daemon.py)
  * Instalar el script init.d con update-rc.d (asi se inicia cuando la maquina se prende)
  * Iniciar pyreplica
 
@@ -64,21 +66,22 @@ apt-get install python2.4 python-psycopg2
 svn co http://www.nsis.com.ar/svn/pyreplica /usr/local/pyreplica
 cp /usr/local/pyreplica/sample.conf /etc/pyreplica/somedb.conf
 vi /etc/pyreplica/somedb.conf
-ln /usr/local/pyreplica/init.d-sample.sh /etc/init.d/pyreplica -sf
+ln /usr/local/pyreplica/pyreplica.sh /etc/init.d/pyreplica -sf
+useradd pyreplica -g 103 -u 103
 update-rc.d pyreplica defaults
 /etc/init.d/pyreplica start
 }}}
 
-En somedb.conf se debe tener configurado la ubicación del archivo de registro (usualmente /var/log/somedb-pyreplica.log), se pude inspeccionar este archivo y ver que esta sucediendo:
+En el archivo de registro (usualmente /var/log/pyreplica.log), se ver que esta sucediendo:
 {{{
-Sun Jun  1 14:52:32 2008 Opening origin (master) connection
-Sun Jun  1 14:52:34 2008 Opening replica (slave) connection
-Sun Jun  1 14:52:34 2008 Encoding for this connections are UTF8 UTF8
-Sun Jun  1 14:52:34 2008 Executing: UPDATE "test" SET "a"='123' WHERE "id2"='1' AND "id2"='2'
-Sun Jun  1 18:50:34 2008 Waiting for 'NOTIFY'
-Sun Jun  1 18:51:34 2008 Timeout(''keepalive'')!
-Sun Jun  1 18:51:34 2008 Waiting for 'NOTIFY'
-Sun Jun  1 18:52:34 2008 Timeout(''keepalive'')!
+somedb Sun Jun  1 14:52:32 2008 Opening origin (master) connection
+somedb Sun Jun  1 14:52:34 2008 Opening replica (slave) connection
+somedb Sun Jun  1 14:52:34 2008 Encoding for this connections are UTF8 UTF8
+somedb Sun  Jun  1 14:52:34 2008 Executing: UPDATE "test" SET "a"='123' WHERE "id2"='1' AND "id2"='2'
+somedb Sun Jun  1 18:50:34 2008 Waiting for 'NOTIFY'
+somedb Sun Jun  1 18:51:34 2008 Timeout(''keepalive'')!
+somedb Sun Jun  1 18:51:34 2008 Waiting for 'NOTIFY'
+somedb Sun Jun  1 18:52:34 2008 Timeout(''keepalive'')!
 }}}
 
 Si falla, se puede ejecutar pyreplica.py directamente para ver la salida directamente en la consola:
@@ -86,3 +89,11 @@ Si falla, se puede ejecutar pyreplica.py directamente para ver la salida directa
 python pyreplica.py "dbname=master user=postgres host=remotehost" "dbname=slave user=postgres host=localhost"
 }}}
 (cambiar dbname, user, password y host)!
+
+== Configuración Multi-maestro ==
+
+ * Se debe instalar el disparador y el demonio para las dos bases de datos.
+ * En ambos archivos de configuración, setear el parámetro SKIP_USER al nombre del usuario postgresql que se conecta y procesa los registros de replicación (para prevenir re-ejecutar los registros propios replicados)
+ * Debe tener cuidado con el manejo de secuencias (no se replican). Consejo: en cada base de datos, usar intervalos diferentes que no se solapen.
+ * Debe evitar los conflictos o realizar un esquema de resolución de conflictos propio
+ 
