@@ -70,6 +70,7 @@ class Replicator(threading.Thread):
             self.start_subject = configdict.get('SMTP','START_SUBJECT')
             self.stop_subject = configdict.get('SMTP','STOP_SUBJECT')
             self.error_subject = configdict.get('SMTP','ERROR_SUBJECT')
+            self.warning_subject = configdict.get('SMTP','WARNING_SUBJECT')
             self.from_addr = configdict.get('SMTP','FROM_ADDR')
             self.to_addrs = configdict.get('SMTP','TO_ADDRS').split(";")
 
@@ -117,7 +118,9 @@ class Replicator(threading.Thread):
         if self.debug_level>=level:
             print self.name,time.asctime(),message
             # flush buffers
-            sys.stdout.flush()       
+            sys.stdout.flush()
+        if level==0: # conflict, send mail
+            self.send_mail(self.warning_subject,message)
 
     def stop(self):
         "Set a flag to kill this thread"

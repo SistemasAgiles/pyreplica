@@ -13,7 +13,7 @@ Esta programado en Python, apuntando a ser simple y flexible, permitiendo:
 
 No hace:
  * Fail over automático
- * Resolución de conflictos 
+ * Resolución de conflictos (pero advierte al detectar conflictos de actualización/eliminación y falla en conflictos de inserción o errores de integridad de datos)
  * Replicación de cambios de esquema (los comandos CREATE/ALTER/etc. deben ejecutarse manualmente en todos los servidores, igualmente la tabla replica_log puede ser usada para propagarlos)
  * No hay soporte para objetos grandes (replica basada en el oid podría ser soportada en próximas versiones)
 
@@ -26,7 +26,9 @@ El disparador detecta los cambios y los almacena usando la clave primaria de la 
 Como usa señales NOTIFY, la replicación es practicamente instantánea y más eficiente (sin polling). Si el cliente esta caido y las señales NOTIFY se pierden, cuando el cliente se conecta nuevamanete, automaticamente reejecuta los datos replicados "perdidos".
 
 El script demonio de replicación usa transacciones de commit en dos fases (TPC), para asegurarse que ambos servidores se actualizaron correctamente.
-Puede configurarse para enviar notificaciones via correo electrónico (cuando el demonio de replicación inicia, se detiene o tiene algún error)
+Puede configurarse para enviar notificaciones via correo electrónico (cuando el demonio de replicación inicia, se detiene o tiene algún error o advertencia)
+
+Pyreplica soporta todos los tipos de datos soportados por plpythonu que pueden ser representados como cadenas (incluyendo bytea). Los tipos Numeric sin precisión definida parecen tener una perdida menor de precisión.
 
 Mediciones de rendimiento simple muestran que el disparador solo es un 50% más lento que uno basado en C (como en slony-I), con los beneficios de que puede ser facilmente instalado, portado, mantenido y adaptado. (ver benchmarks.txt)
 

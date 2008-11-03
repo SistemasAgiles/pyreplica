@@ -82,6 +82,10 @@ def replicate(cur0, cur1, skip_user, debug):
             # Execute replica queries in slave
             debug("Executing: %s" % row[1], level=2)
             cur1.execute(row[1])
+            # Detect UPDATE/SELECT and DELETE conflicts 
+            if cur1.rowcount!=1:
+                debug("Possible conflict (%d rows affected):\n%s" % (
+                    cur1.rowcount, row[1]), level=0)
         if cur0.rowcount:
             # mark replicated data
             cur0.execute("UPDATE replica_log SET replicated=TRUE WHERE NOT replicated")

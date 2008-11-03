@@ -8,6 +8,9 @@ CREATE OR REPLACE FUNCTION py_log_replica()
   RETURNS "trigger" AS
 $BODY$
 
+  # Change if you don't want to check data conflicts (inserts a SELECT query)
+  warn_conflicts = True 
+
   # function to convert value from python to postgres representation
   def mogrify(v):
     if v is None: return 'NULL' 
@@ -46,6 +49,15 @@ $BODY$
   elif event == 'UPDATE':
     modified = [(k,v) for (k,v) in new.items() if old[k]<>v]
     if modified: # only if there are modified fields
+      if warn_conflicts:
+        # Insert a query to warn if there is a data conflict
+        sql = 'SELECT %s FROM "%s" WHERE %s' % (
+            ', '.join(['%s AS "new_%s"' % (mogrify(v),k) for k,v in modified]),
+            relname,
+            ' AND '.join(['"%s"=%s' % (k,mogrify(v)) for k,v in old.items() 
+                if k in primary_keys or k in [k for (k,n) in modified]]),
+        )
+        plpy.execute(plan, [ sql ], 0)
       sql = 'UPDATE "%s" SET %s WHERE %s' % (
             relname,
             ', '.join(['"%s"=%s' % (k,mogrify(v)) for k,v in modified]),

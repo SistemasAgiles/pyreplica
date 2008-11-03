@@ -13,7 +13,7 @@ It is programmed in Python, aimed to be simple and flexible, allowing:
 
 It does not do:
  * Automatic Fail over
- * Conflict resolution
+ * Conflict resolution (but warns on update/delete conflict detection and fails on insert conflicts or data integrity errors)
  * Repliction of schema changes (CREATE/ALTER/etc. commands should be done manually in all servers, although replica_log table can be used to propagate them)
  * Support Large objects by now (oid based replica could be supported in next releases)
 
@@ -26,7 +26,9 @@ The trigger detects changes and stores it using the table primary key. So, if th
 As it uses NOTIFY signals, replication is almost instantaneous and efficient (no polling). If client is down and NOTIFY signals are lost, when the client script gets online again, automatically it replays the "lost" replicated data.
 
 Replication daemon script uses Two Phase Commit transactions, to assure both servers are updated correctly.
-It can be configured to send email notifications (when replication daemon starts, stops or has some error)
+It can be configured to send email notifications (when replication daemon starts, stops or has some error or warning)
+
+Pyreplica support all data types supported by plpythonu that can be represented as strings (including bytea). Numeric types without precision defined seems to have a minor loss on precision.
 
 Simple benchmarks shows that this trigger is only 50% slower than a C based one (as in slony-I), with the benefits that it can be easily ported, installed, maintained and customized. (see benchmarks.txt)
 

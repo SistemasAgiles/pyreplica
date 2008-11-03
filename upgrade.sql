@@ -1,5 +1,9 @@
 -- stop pyreplica
 
+-- upgrade from < 1.0.5
+
+-- to detect update conflicts, recreate py_log_replica function and restart backend
+
 -- upgrade from < 1.0.4
 
 alter table replica_log add column username name default CURRENT_USER;
