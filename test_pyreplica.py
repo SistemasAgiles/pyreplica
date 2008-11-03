@@ -57,6 +57,7 @@ class PyReplicaTests(unittest.TestCase):
         # install pyreplica
         self.cur0.execute(open("master-install.sql").read())
         self.con0.commit()
+        #self.cur1.execute(open("slave-install.sql").read())
         self.con1.commit()
         
     def tearDown(self):
@@ -71,11 +72,11 @@ class PyReplicaTests(unittest.TestCase):
         cur.execute("DROP DATABASE master")
         cur.execute("DROP DATABASE slave")
 
-    def insert(self,cur,t):
+    def insert(self,cur,t,commit=True):
         cur.execute("INSERT INTO %s (t) VALUES (%%s)" % self.test_table, (t,))
         cur.execute("SELECT * FROM %s WHERE id = currval('%s_id_seq')" % 
             (self.test_table,self.test_table) )
-        cur.connection.commit()
+        if commit: cur.connection.commit()
         return cur.fetchone()[0]
     
     def update(self,cur,i,t):
@@ -150,8 +151,8 @@ class PyReplicaTests(unittest.TestCase):
         self.replicate(must_conflict=True)
         self.diff("DELETE CONFLICT")
 
-    def test_multiple(self):
-        "Test multiple insert, update and deletes "
+    def _test_multiple(self):
+        "Test multiple (bulk) insert, update and deletes "
         for x in xrange(1000):
             i = self.insert(self.cur0,'spam')
         self.replicate()
@@ -172,6 +173,27 @@ class PyReplicaTests(unittest.TestCase):
         self.con0.commit()
         self.replicate()
         self.diff("BYTEA INSERT")
+
+    def test_long_transaction(self):
+        "Test long/overlapping transactions"
+        # open new connection (to do parallel transactions)
+        con0, con1 = pyreplica.connect(DSN0,DSN1, self.debug)
+        cur0 = con0.cursor()
+        # insert, but keep the transaction open
+        i = self.insert(cur0,'spam',commit=False)
+        # insert and commit transaction
+        i = self.insert(self.cur0,'eggs',commit=True)
+        self.replicate()
+        self.diff("INSERT LONG 2")
+        self.assertTrue(self.rowcount(self.cur1)==1,"It showld be one rows")
+        con0.commit()
+        # clean up
+        con0.close()
+        con1.close()        
+        self.replicate()
+        self.diff("INSERT LONG 1")
+        self.assertTrue(self.rowcount(self.cur1)==2,"It showld be two rows")
+
 
 if __name__ == '__main__':
     suite = unittest.TestLoader().loadTestsFromTestCase(PyReplicaTests)

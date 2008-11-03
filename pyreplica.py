@@ -80,12 +80,19 @@ def replicate(cur0, cur1, skip_user, debug):
                      "ORDER BY id ASC FOR UPDATE" % sql ,args)
         for row in cur0:
             # Execute replica queries in slave
-            debug("Executing: %s" % row[1], level=2)
-            cur1.execute(row[1])
+            sql = row[1]
+            debug("Executing: %s" % sql, level=2)
+            cur1.execute(sql)
             # Detect UPDATE/SELECT and DELETE conflicts 
-            if cur1.rowcount!=1:
+            if cur1.rowcount!=1 and not sql.startswith("SELECT"):
                 debug("Possible conflict (%d rows affected):\n%s" % (
-                    cur1.rowcount, row[1]), level=0)
+                    cur1.rowcount, sql), level=0)
+            if cur1.rowcount!=0 and sql.startswith("SELECT"):
+                descs = ['row %d: {%s}' % (j, ', '.join(
+                    ['%s: %s' % (cur1.description[i][0],repr(v))
+                    for i,v in enumerate(row)])) for j, row in enumerate(cur1)]
+                debug("Possible conflict (%d rows):\n%s\n%s" % (
+                    cur1.rowcount, sql, '\n'.join(descs)), level=0)
         if cur0.rowcount:
             # mark replicated data
             cur0.execute("UPDATE replica_log SET replicated=TRUE WHERE NOT replicated")

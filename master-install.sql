@@ -51,10 +51,14 @@ $BODY$
     if modified: # only if there are modified fields
       if warn_conflicts:
         # Insert a query to warn if there is a data conflict
-        sql = 'SELECT %s FROM "%s" WHERE %s' % (
+        sql = 'SELECT %s,%s,%s FROM "%s" WHERE %s' % (
+            ', '.join(['%s AS "old_%s"' % (k,k) for k,v in modified]),
             ', '.join(['%s AS "new_%s"' % (mogrify(v),k) for k,v in modified]),
+            ', '.join(['%s AS "expected_%s"' % (mogrify(old[k]),k) for k,v in modified]),
             relname,
-            ' AND '.join(['"%s"=%s' % (k,mogrify(v)) for k,v in old.items() 
+            ' AND '.join(['"%s" %s %s' % 
+                (k,k in primary_keys and "=" or "<>",mogrify(v)) 
+                for k,v in old.items()
                 if k in primary_keys or k in [k for (k,n) in modified]]),
         )
         plpy.execute(plan, [ sql ], 0)
