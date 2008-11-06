@@ -13,6 +13,7 @@
 # or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
 # for more details.
 
+import datetime
 import pyreplica
 import psycopg2
 import unittest
@@ -72,19 +73,26 @@ class PyReplicaTests(unittest.TestCase):
         cur.execute("DROP DATABASE master")
         cur.execute("DROP DATABASE slave")
 
-    def insert(self,cur,t,commit=True):
-        cur.execute("INSERT INTO %s (t) VALUES (%%s)" % self.test_table, (t,))
+    def insert(self,cur,commit=True,**kwargs):
+        cur.execute("INSERT INTO %s (%s) VALUES (%s)" % (self.test_table,
+            ', '.join(["%s" % k for k in kwargs.keys()]),
+            ', '.join(["%%(%s)s" % k for k in kwargs.keys()])), kwargs)
+        if DEBUG: print cur.query
         cur.execute("SELECT * FROM %s WHERE id = currval('%s_id_seq')" % 
             (self.test_table,self.test_table) )
         if commit: cur.connection.commit()
         return cur.fetchone()[0]
     
-    def update(self,cur,i,t):
-        cur.execute("UPDATE %s SET t=%%s WHERE id=%%s" % self.test_table, (t,i))
+    def update(self,cur,id,**kwargs):
+        fields = kwargs.keys()
+        kwargs['id'] = id
+        cur.execute("UPDATE %s SET %s WHERE id=%%(id)s" % (self.test_table, 
+            ', '.join(["%s=%%(%s)s" % (k,k) for k in fields])), kwargs)
+        if DEBUG: print cur.query
         cur.connection.commit()
     
-    def delete(self,cur,i):
-        cur.execute("DELETE FROM %s WHERE id=%%s" % self.test_table, (i,))
+    def delete(self,cur,id):
+        cur.execute("DELETE FROM %s WHERE id=%%s" % self.test_table, (id,))
         cur.connection.commit()
 
     def rowcount(self, cur):
@@ -125,36 +133,44 @@ class PyReplicaTests(unittest.TestCase):
     
     def test_basic(self):
         "Test normal insert, update, delete"
-        i = self.insert(self.cur0,'spam')
+        id = self.insert(self.cur0,t='spam')
         self.replicate()
         self.diff("INSERT")
-        self.update(self.cur0,i,'eggs')
+        self.update(self.cur0,id,t='eggs',f=3.14,d=datetime.datetime.now())
         self.replicate()
         self.diff("UPDATE")
-        self.delete(self.cur0,i)
+        self.delete(self.cur0,id)
         self.replicate()
         self.diff("DELETE")
-        i = self.insert(self.cur0,'spam')
+        id = self.insert(self.cur0,t='spam')
         self.replicate()
         
     def test_conflicts(self):
         "Test normal insert, update, delete with conflicts"
-        i = self.insert(self.cur0,'spam')
+        id = self.insert(self.cur0,t='spam')
         self.replicate()
         self.diff("INSERT")
-        self.update(self.cur1,i,'bacon') # change on slave so it must conflict
-        self.update(self.cur0,i,'eggs') 
+        self.update(self.cur1,id,t='bacon',f=2.0,d=datetime.datetime.now())
+        self.update(self.cur0,id,t='eggs',f=None,d=None) 
         self.replicate(must_conflict=True)
         self.diff("INSERT CONFLICT")
-        self.delete(self.cur1,i)        # delete on slave so it must conflict
-        self.delete(self.cur0,i)
+        self.delete(self.cur1,id)        # delete on slave so it must conflict
+        self.delete(self.cur0,id)
         self.replicate(must_conflict=True)
         self.diff("DELETE CONFLICT")
 
-    def _test_multiple(self):
+    def test_integrity(self):
+        "Test integrity error"
+        id = self.insert(self.cur0,t='spam')
+        id = self.insert(self.cur1,t='spam')
+        self.assertRaises(psycopg2.IntegrityError,self.replicate)
+        self.con0.tpc_rollback()
+        self.con1.tpc_rollback()
+
+    def test_multiple(self):
         "Test multiple (bulk) insert, update and deletes "
         for x in xrange(1000):
-            i = self.insert(self.cur0,'spam')
+            i = self.insert(self.cur0,t='spam')
         self.replicate()
         self.diff("INSERT MULTIPLE")
         self.cur0.execute("UPDATE %s SET t=%%s" % self.test_table, ("bacon",))
@@ -168,9 +184,8 @@ class PyReplicaTests(unittest.TestCase):
         
     def test_bytea(self):
         "Test bytea datatype"
-        self.cur0.execute("INSERT INTO %s (ba) VALUES (%%s)" % self.test_table,
-            (psycopg2.Binary(''.join([chr(i) for i in xrange(0,255)])),))
-        self.con0.commit()
+        self.insert(self.cur0, 
+            ba=(psycopg2.Binary(''.join([chr(i) for i in xrange(0,255)])),))
         self.replicate()
         self.diff("BYTEA INSERT")
 
@@ -180,16 +195,16 @@ class PyReplicaTests(unittest.TestCase):
         con0, con1 = pyreplica.connect(DSN0,DSN1, self.debug)
         cur0 = con0.cursor()
         # insert, but keep the transaction open
-        i = self.insert(cur0,'spam',commit=False)
+        i = self.insert(cur0, commit=False, t='spam')
         # insert and commit transaction
-        i = self.insert(self.cur0,'eggs',commit=True)
+        i = self.insert(self.cur0,commit=True, t='eggs')
         self.replicate()
         self.diff("INSERT LONG 2")
         self.assertTrue(self.rowcount(self.cur1)==1,"It showld be one rows")
         con0.commit()
         # clean up
         con0.close()
-        con1.close()        
+        con1.close()
         self.replicate()
         self.diff("INSERT LONG 1")
         self.assertTrue(self.rowcount(self.cur1)==2,"It showld be two rows")
