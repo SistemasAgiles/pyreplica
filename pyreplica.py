@@ -28,10 +28,16 @@ USERNAME = 'replica'
 import sys
 import psycopg2,psycopg2.extensions
 import tpc
-import select
 import time
 import os
 import md5
+
+if sys.platform!="win32":
+    from select import select
+else:
+    def select(*args, **kwargs):
+        time.sleep(1) # select doesn't work on windows, just sleep 1 sec
+        return args
 
 def debug(message,level=1):
     "Print a debug message"
@@ -149,17 +155,19 @@ def main_loop(dsn0, dsn1, is_killed, skip_user, keepalive, debug=debug):
     try:
         # set isolation level for LISTEN 
         con0.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT)
-        cur0.execute('LISTEN "replicas"')
+        if sys.platform!="win32":
+            cur0.execute('LISTEN "replicas"') # LISTEN doesn't work on win
         # set isolation level to prevent read problems
         con0.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_SERIALIZABLE)
         con1.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_SERIALIZABLE)
         while not is_killed():
             debug("Waiting for 'NOTIFY'",level=3)
-            if select.select([cur0],[],[], TIMEOUT)==([],[],[]):
+            if select([cur0],[],[], TIMEOUT)==([],[],[]):
                 debug("Timeout!",level=3)
             else:
                 if cur0.isready():
-                    debug("main_loop():Got NOTIFY: %s" % str(cur0.connection.notifies.pop()),level=3)
+                    if cur0.connection.notifies:
+                        debug("main_loop():Got NOTIFY: %s" % str(cur0.connection.notifies.pop()),level=3)
                     replicate(cur0,cur1,skip_user,debug)
             if keepalive:
                 cur0.execute('SELECT now()')
