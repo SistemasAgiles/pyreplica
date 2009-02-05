@@ -29,6 +29,7 @@ test=# SELECT py_log_create_tg(relname::text) FROM pg_class WHERE relname !~ '^(
 
 To install the trigger manually in a table, you could run py_log_create_tg('tablename') or directly using CREATE TRIGGER instruction (see sql file).
 
+IMPORTANT: Read master-install.sql before executing it, you may have to uncomment some lines to create plpythonu language or grant privileges.
 
 === Master install on Debian ===
  * Assure plpythonu package is installed

@@ -29,6 +29,7 @@ test=# SELECT py_log_create_tg(relname::text) FROM pg_class WHERE relname !~ '^(
 
 Para instalar el disparador manualmente en una tabla, se puede ejecutar py_log_create_tg('tablename') o usar directamente la instrucción CREATE TRIGGER (ver el archivo sql).
 
+IMPORTANTE: Leer master-install.sql antes de ejecutarlo, puede que deba descomentar algunas lineas para crear el lenguaje plpythonu o conceder privilegios.
 
 === Instalación Maestra en Debian ===
  * Asegurarse que el paquete plpythonu este instalado

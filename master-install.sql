@@ -1,7 +1,7 @@
 -- == Master db ==
 
--- create python language (must be installed):
-CREATE LANGUAGE plpythonu;
+-- create python language: (uncomment if not installed, must be superuser):
+-- CREATE LANGUAGE plpythonu;
 
 -- create replica function
 CREATE OR REPLACE FUNCTION py_log_replica()
@@ -97,7 +97,7 @@ CREATE TABLE replica_log (
  ts TIMESTAMP DEFAULT now()
 ) WITHOUT OIDS ;
 
--- setup permission (if applicable):
+-- setup permission (if applicable, uncomment and change username):
 
 --GRANT ALL ON replica_log_id_seq TO someone; 
 --GRANT ALL ON replica_log TO someone; 
