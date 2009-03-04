@@ -121,7 +121,7 @@ class PyReplicaTests(unittest.TestCase):
 
     def replicate(self, must_conflict = False):
         self.warnings = []
-        pyreplica.replicate(self.cur0, self.cur1, None, self.debug)
+        pyreplica.replicate(self.cur0, self.cur1, debug=self.debug)
         # check for warning messages
         if not must_conflict:
             self.assertFalse(self.warnings, 

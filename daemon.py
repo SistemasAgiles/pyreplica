@@ -43,45 +43,33 @@ class Replicator(threading.Thread):
         threading.Thread.__init__(self)
         # Set default values
         self.killed = False
-        self.debug_level = DEBUG_LEVEL
-        self.skip_user = None
-        self.keepalive = False
-        self.smtp_server = self.username = self.password = None
-        self.start_subject = self.stop_subject = self.error_subject = ''
         # Parse configuration:
         configdict = SafeConfigParser()
         configdict.read(config_file)
-        self.name = configdict.get('MAIN','NAME')
+        main_conf = dict([(k.upper(),v) for k,v in configdict.items('MAIN')])
+        self.name = main_conf['NAME']
         # Database's connections
-        self.dsn0 = configdict.get('MAIN','DSN0')
-        self.dsn1 = configdict.get('MAIN','DSN1')
-        if configdict.has_option('MAIN','SKIP_USER'):
-            self.skip_user = configdict.get('MAIN','SKIP_USER')
-        if configdict.has_option('MAIN','KEEPALIVE'):
-            self.keepalive = configdict.get('MAIN','KEEPALIVE').lower() == 'true'
-        if configdict.has_option('MAIN','DEBUG_LEVEL'):
-            self.debug_level = int(configdict.get('MAIN','DEBUG_LEVEL'))
+        self.dsn0 = main_conf['DSN0']
+        self.dsn1 = main_conf['DSN1']
+        self.skip_user = main_conf.get('SKIP_USER',None)
+        self.keepalive = main_conf.get('KEEPALIVE', "False").lower() == 'true'
+        self.slave_field = main_conf.get('SLAVE_FIELD', pyreplica.FIELD)
+        self.debug_level = int(main_conf.get('DEBUG_LEVEL',DEBUG_LEVEL))
         # Email notification
         if configdict.has_section('SMTP'):
-            self.smtp_server = configdict.get('SMTP','SERVER')
-            if configdict.has_option('SMTP','USERNAME'):
-                self.username = configdict.get('SMTP','USERNAME')
-                self.password = configdict.get('SMTP','PASSWORD')
-            self.start_subject = configdict.get('SMTP','START_SUBJECT')
-            self.stop_subject = configdict.get('SMTP','STOP_SUBJECT')
-            self.error_subject = configdict.get('SMTP','ERROR_SUBJECT')
-            self.warning_subject = configdict.get('SMTP','WARNING_SUBJECT')
-            self.from_addr = configdict.get('SMTP','FROM_ADDR')
-            self.to_addrs = configdict.get('SMTP','TO_ADDRS').split(";")
+            self.smtp_conf = dict([(k.upper(),v) for k,v in configdict.items('SMTP')])
+        else:
+            self.smtp_conf = {}
 
     def run(self):
         while not self.killed:
-            self.send_mail(self.start_subject,"")
+            self.send_mail(self.smtp_conf.get('START_SUBJECT', ""),"")
             try:
                 # start replication main loop
                 pyreplica.main_loop(self.dsn0, self.dsn1,
                     is_killed = lambda: self.killed, 
                     skip_user = self.skip_user, 
+                    slave_field = self.slave_field,
                     keepalive = self.keepalive, 
                     debug = self.debug)
             except SystemExit:
@@ -90,26 +78,26 @@ class Replicator(threading.Thread):
                 # convert the exception to a string and send it via email
                 output = StringIO.StringIO()
                 traceback.print_exc(file=output)
-                self.send_mail(self.error_subject,output.getvalue())
+                self.send_mail(self.smtp_conf.get('ERROR_SUBJECT', ""),output.getvalue())
             # wait 60 seconds if it fails
             time.sleep(60)
-        self.send_mail(self.stop_subject,"")
+        self.send_mail(self.smtp_conf.get('STOP_SUBJECT', ""),"")
         
     def send_mail(self, subject, body):
-        if not self.smtp_server:
+        if not self.smtp_conf:
             return # smtp not configured
         msg = MIMEText(body)
         msg['Subject'] = subject
-        msg['From'] = self.from_addr
-        msg['Reply-to'] = self.from_addr
-        msg['To'] = "; ".join(self.to_addrs)
+        msg['From'] = self.smtp_conf['FROM_ADDR']
+        msg['Reply-to'] = self.smtp_conf['FROM_ADDR']
+        msg['To'] = self.smtp_conf['TO_ADDRS']
         try:
             self.debug("Sending mail: %s" % subject,2)
-            s = SMTP(self.smtp_server)
-            if self.username and self.password:
+            s = SMTP(self.smtp_conf['SERVER'])
+            if 'USERNAME' in self.smtp_conf and 'PASSWORD' in self.smtp_conf:
                 s.ehlo()
-                s.login(self.username,self.password)
-            s.sendmail(self.from_addr, self.to_addrs, msg.as_string())
+                s.login(self.smtp_conf['USERNAME'],self.smtp_conf['PASSWORD'])
+            s.sendmail(msg['From'], msg['To'], msg.as_string())
         except Exception,e:
             self.debug("Exception while sending mail: %s" % str(e))
 
@@ -120,7 +108,7 @@ class Replicator(threading.Thread):
             # flush buffers
             sys.stdout.flush()
         if level==0: # conflict, send mail
-            self.send_mail(self.warning_subject,message)
+            self.send_mail(self.smtp_conf.get('WARNING_SUBJECT', ""),message)
 
     def stop(self):
         "Set a flag to kill this thread"

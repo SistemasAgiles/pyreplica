@@ -21,7 +21,8 @@ DSN0 = None 	# origin (master), may be passwd in argv or environ
 DSN1 = None 	# replica (slave), may be passed in argv or environ
 DEBUG = 2	# 1: normal, 2: verbose
 TIMEOUT = 60 	# time (in seconds) between selects
-USERNAME = 'replica'
+USERNAME = 'replica' # in multi-master: the replication user
+FIELD = 'replicated' # in multi-slave: the slave column to mark replicated data 
 
 # don't modify anything below tis line (except for experimenting)
 
@@ -46,7 +47,7 @@ def debug(message,level=1):
         # flush buffers
         sys.stdout.flush()       
 
-def replicate(cur0, cur1, skip_user, debug):
+def replicate(cur0, cur1, skip_user=None, slave_field=FIELD, debug=debug):
     "Process remote replication log (cur0: master cursor, cur1: slave cursor)"
     con0 = cur0.connection
     con1 = cur1.connection
@@ -82,8 +83,8 @@ def replicate(cur0, cur1, skip_user, debug):
         args = skip_user and (skip_user,) or ()
         # Query un-replicated data (lock rows to prevent data loss)
         cur0.execute("SELECT id,sql FROM replica_log "
-                     "WHERE NOT replicated %s " 
-                     "ORDER BY id ASC FOR UPDATE" % sql ,args)
+                     "WHERE NOT %s %s " 
+                     "ORDER BY id ASC FOR UPDATE" % (slave_field, sql) ,args)
         for row in cur0:
             # Execute replica queries in slave
             sql = row[1]
@@ -101,7 +102,8 @@ def replicate(cur0, cur1, skip_user, debug):
                     cur1.rowcount, sql, '\n'.join(descs)), level=0)
         if cur0.rowcount:
             # mark replicated data
-            cur0.execute("UPDATE replica_log SET replicated=TRUE WHERE NOT replicated")
+            cur0.execute("UPDATE replica_log SET %s=TRUE WHERE NOT %s"
+                % (slave_field, slave_field))
             # prepare first phase of TPC transaction
             con0.tpc_prepare()
             con1.tpc_prepare()
@@ -135,7 +137,7 @@ def connect(dsn0, dsn1, debug):
         debug("connect(): FATAL ERROR: %s" % str(e))
         raise
     
-def main_loop(dsn0, dsn1, is_killed, skip_user, keepalive, debug=debug):
+def main_loop(dsn0, dsn1, is_killed, skip_user, slave_field=FIELD, keepalive=False, debug=debug):
     """Open connections, listen for signals and process replica logs (forever)
      * dsn0: master database connection string
      * dsn1: slave database connection string
@@ -149,7 +151,7 @@ def main_loop(dsn0, dsn1, is_killed, skip_user, keepalive, debug=debug):
     cur1 = con1.cursor()
 
     # process previous logs:
-    replicate(cur0, cur1, skip_user, debug)
+    replicate(cur0, cur1, skip_user, slave_field, debug)
 
     # main loop:
     try:
@@ -168,7 +170,7 @@ def main_loop(dsn0, dsn1, is_killed, skip_user, keepalive, debug=debug):
                 if cur0.isready():
                     if cur0.connection.notifies:
                         debug("main_loop():Got NOTIFY: %s" % str(cur0.connection.notifies.pop()),level=3)
-                    replicate(cur0,cur1,skip_user,debug)
+                    replicate(cur0, cur1, skip_user, slave_field, debug)
             if keepalive:
                 cur0.execute('SELECT now()')
                 con0.commit()
@@ -208,5 +210,5 @@ if __name__=="__main__":
         print " * DSN0: origin. example: \"dbname=master user=postgres host=remotehost\""
         print " * DSN1: replica. example: \"dbname=replica user=postgres host=localhost\""
         sys.exit(1)
-    main_loop(DSN0,DSN1,is_killed=lambda:False, skip_user='', keepalive = True)
+    main_loop(DSN0,DSN1,is_killed=lambda:False, skip_user='', slave_field=FIELD, keepalive = True)
     sys.exit(1)

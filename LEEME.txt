@@ -4,6 +4,8 @@ PyReplica es un replicador asincrónico maestro-esclavo simple para PostgreSQL ba
 
 Soporta además una configuración de multi-maestro asincrónica "perezosa" (replicación en ambos sentidos, cada base de datos es un maestro y un esclavo al mismo tiempo). Cuidado: ud., o su aplicación, deberá tener en cuenta el manejo de secuencias y la resolución de conflictos.
 
+Recientemente se ha agregado soporte para servicio básico en windows, múltiples esclavos y replicación condicional mediante filtros escritos en Python (actualmente en fase de pruebas).
+
 Esta programado en Python, apuntando a ser simple y flexible, permitiendo:
  * Fácil instalación (simplemente ejecutar un script sql en el servidor, y copiar un script demonio en el cliente, no se requiere compilación)
  * Fácil administración (en general no necesita administración para el uso normal, no es necesario aprender un nuevo conjunto de comandos o marco de trabajo)

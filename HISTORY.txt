@@ -1,5 +1,6 @@
 PyReplica HISTORY:
 
+ * 2009-03-04: 1.0.7 - conditional replication, multi slave support, basic windows service
  * 2008-11-02: 1.0.5 - conflict detection (via mail) and tests
  * 2008-10-06: 1.0.4 - enhanced daemon (threads, mail notification, etc.) and several major fixes
  * 2008-08-04: 1.0.3 - two phase commit to assure updates on both servers - thanks again to Marko Kreen

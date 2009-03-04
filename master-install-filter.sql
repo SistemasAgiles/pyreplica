@@ -1,6 +1,6 @@
 -- == Master db ==
 
--- create python language: (comment if already installed, must be superuser):
+-- create python language: (uncomment if not installed, must be superuser):
 CREATE LANGUAGE plpythonu;
 
 -- create replica function
@@ -26,9 +26,12 @@ $BODY$
   # retrieve or prepare plan for faster processing
   if SD.has_key("plan"):
       plan = SD["plan"]
+      filter_plan = SD["filter_plan"]
   else:
       plan = plpy.prepare("INSERT INTO replica_log (sql) VALUES ($1)", ["text"])
       SD["plan"] = plan
+      filter_plan = plpy.prepare("SELECT * FROM py_log_filter WHERE relname=$1 and event=$2", ["text","text"])
+      SD["filter_plan"] = filter_plan
 
   new = TD['new']
   old = TD['old']
@@ -38,6 +41,16 @@ $BODY$
   args = TD['args'] 
   relname = args[0]
   primary_keys = args[1:]
+
+  # get filter condition:
+  rows = plpy.execute(filter_plan, (relname, event))
+  for row in rows:
+    if not eval(row['condition'],{"new": new,"old": old}):
+       plpy.notice("pyreplica cond fail %s" % row['condition'])
+       event = None # row doesn't pass filter cond
+       sql = ""
+    else:
+       plpy.notice("pyreplica cond ok %s" % row['condition'])
 
   # make sql according with trigger DML action
   if event == 'INSERT':
@@ -97,10 +110,15 @@ CREATE TABLE replica_log (
  ts TIMESTAMP DEFAULT now()
 ) WITHOUT OIDS ;
 
+-- create filter table (where python conditions are stored):
+CREATE TABLE py_log_filter (relname text, event text, condition text);
+
+
 -- setup permission (if applicable, uncomment and change username):
 
 --GRANT ALL ON replica_log_id_seq TO someone; 
 --GRANT ALL ON replica_log TO someone; 
+--GRANT ALL ON py_log_filter TO someone; 
 
 
 -- for each table that needs replication (on master db), create a trigger like this:

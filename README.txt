@@ -4,6 +4,8 @@ PyReplica is a simple Python-based PostgreSQL master-slave asynchronous replicat
 
 It supports lazy async multi-master setup too (replication on both ways, each database is a master and a slave at the same time). Warning: you (or your application) must take care of sequence handling and conflict resolution.
 
+Recently it has been added support for basic windows service, multiple slaves and conditional replication whit filters written in Python (currently in testing phase).
+
 It is programmed in Python, aimed to be simple and flexible, allowing:
  * Easy installation (just run a sql script on the server, and copy a python daemon on client, no compilation required)
  * Easy administration (almost no management needed for normal usage, no new command set or framework to learn)

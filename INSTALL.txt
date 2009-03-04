@@ -50,6 +50,7 @@ psql somedb -U someuser < master-install.sql
 
 Although python script could be run on windows, currently the replication daemon is supported only linux (debian). 
 Note: psycopg on windows doesn't come with select support by default, and after compiling it, it seems not to work correctly (connection is unexpectedly closed when you use listen and transactions)
+There is a very basic service that can be used in windows (service.py), but as signal/select isn't supported, it uses polling.
 
 === Slave install on Debian ===
  * Restore the master database dump.
@@ -78,7 +79,7 @@ In the log file (usually /var/log/pyreplica.log), you can see what is happening:
 somedb Sun Jun  1 14:52:32 2008 Opening origin (master) connection
 somedb Sun Jun  1 14:52:34 2008 Opening replica (slave) connection
 somedb Sun Jun  1 14:52:34 2008 Encoding for this connections are UTF8 UTF8
-somedb Sun  Jun  1 14:52:34 2008 Executing: UPDATE "test" SET "a"='123' WHERE "id2"='1' AND "id2"='2'
+somedb Sun Jun  1 14:52:34 2008 Executing: UPDATE "test" SET "a"='123' WHERE "id2"='1' AND "id2"='2'
 somedb Sun Jun  1 18:50:34 2008 Waiting for 'NOTIFY'
 somedb Sun Jun  1 18:51:34 2008 Timeout(''keepalive'')!
 somedb Sun Jun  1 18:51:34 2008 Waiting for 'NOTIFY'
@@ -97,3 +98,19 @@ python pyreplica.py "dbname=master user=postgres host=remotehost" "dbname=slave 
  * In both config files, set up the parameter SKIP_USER to the name of the postgresql user who connect and process replication log (to prevent replaying own replicated logs)
  * You must have care with secuence handling (they do not replicate). Tip: use different non-overlaping intervals on each database
  * You must avoid conflicts or use your own conflict resolution schema.
+
+== Multi-slave setup ==
+
+To set up multiples slaves, add a boolean field per each slave on replica_log table, and configure SLAVE_FIELD with the field name.
+This setup is currently untested (watch signal and locking mechanisms).
+
+== Filters setup ==
+
+Pyreplica now can replicate only the events (INSERT, UPDATE, DELETE) that you choose to.
+You can filter the data to be replicated using conditions (python expressions), evaluating new and old record values (dictionaries), etc.
+
+ * By now, run master-install-filter.sql
+ * Add filter conditions:
+{{{
+INSERT INTO py_log_filter (relname, event, condition) VALUES ('mytable','INSERT','new["field1"].startswith("Something") or new["field2"]==123');
+}}}

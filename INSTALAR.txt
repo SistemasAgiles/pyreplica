@@ -50,6 +50,8 @@ psql somedb -U someuser < master-install.sql
 
 Aunque el script python podría ejecutarse en windows, actualmente solo se soporta linux (debian) para el demonio de replicación esclavo.
 Note: psycopg en windows no viene con el soporte para select por defecto, y después de haberlo compilado, parece no funcionar correctamente (la conexión es cerrada inesperadamente cuando se usan transacciones y listen)
+Hay un servicio muy básico que puede ser usado en windows (service.py), pero como no se soporta signal/select, usa polling.
+
 
 === Instalación Esclava en Debian ===
  * Restaurar el resguardo de la base de datos maestra
@@ -97,4 +99,19 @@ python pyreplica.py "dbname=master user=postgres host=remotehost" "dbname=slave 
  * En ambos archivos de configuración, setear el parámetro SKIP_USER al nombre del usuario postgresql que se conecta y procesa los registros de replicación (para prevenir re-ejecutar los registros propios replicados)
  * Debe tener cuidado con el manejo de secuencias (no se replican). Consejo: en cada base de datos, usar intervalos diferentes que no se solapen.
  * Debe evitar los conflictos o realizar un esquema de resolución de conflictos propio
- 
+
+== Configuración Multi-esclavo ==
+
+Para configurar multiples esclavos, agregar un campo booleano por cada esclavo en la tabla replica_log, y configurar SLAVE_FIELD con el nombre de dicho campo.
+Esta configuración actualmente no esta probada (observar los mecanismos de señales y bloqueos).
+
+== Configuración de Filtros ==
+
+Pyreplica ahora puede replicar solo los eventos (INSERT, UPDATE, DELETE) que ud. elige.
+Puede filtrar los datos a ser replicados usando condiciones (expresiones python), evaluando los valores de los registros en new y old (diccionarios), etc.
+
+ * Por ahora, ejecutar master-install-filter.sql
+ * Agregar las condiciones de filtro:
+{{{
+INSERT INTO py_log_filter (relname, event, condition) VALUES ('mytable','INSERT','new["field1"].startswith("Something") or new["field2"]==123');
+}}}
