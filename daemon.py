@@ -60,6 +60,8 @@ class Replicator(threading.Thread):
             self.smtp_conf = dict([(k.upper(),v) for k,v in configdict.items('SMTP')])
         else:
             self.smtp_conf = {}
+        self.debug("Starting threads" ,2)        
+
 
     def run(self):
         while not self.killed:

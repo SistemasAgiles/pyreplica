@@ -90,6 +90,7 @@ def replicate(cur0, cur1, skip_user=None, slave_field=FIELD, debug=debug):
             sql = row[1]
             debug("Executing: %s" % sql, level=2)
             cur1.execute(sql)
+            debug("Executed: %s" % sql, level=2)
             # Detect UPDATE/SELECT and DELETE conflicts 
             if cur1.rowcount!=1 and not sql.startswith("SELECT"):
                 debug("Possible conflict (%d rows affected):\n%s" % (
@@ -101,6 +102,7 @@ def replicate(cur0, cur1, skip_user=None, slave_field=FIELD, debug=debug):
                 debug("Possible conflict (%d rows):\n%s\n%s" % (
                     cur1.rowcount, sql, '\n'.join(descs)), level=0)
         if cur0.rowcount:
+            debug("Mark replicated data", level=2)
             # mark replicated data
             cur0.execute("UPDATE replica_log SET %s=TRUE WHERE NOT %s"
                 % (slave_field, slave_field))
@@ -111,10 +113,12 @@ def replicate(cur0, cur1, skip_user=None, slave_field=FIELD, debug=debug):
             con0.tpc_commit()
             con1.tpc_commit()
         else:
-            # rollback prepared TPC transaction
-            con0.tpc_rollback()
+            debug("Rollback", level=2)
+
             con1.tpc_rollback()
-    except Exception:
+            con0.tpc_rollback()
+    except Exception, e:
+        debug("EXCEPTION! %s " % str(e), level=2)
         # something failed, try to resolve next time
         # (the connections may be in a unrecoverable status or disconected)
         raise
@@ -151,7 +155,10 @@ def main_loop(dsn0, dsn1, is_killed, skip_user, slave_field=FIELD, keepalive=Fal
     cur1 = con1.cursor()
 
     # process previous logs:
+    debug("Replicate previous logs...",level=3)
     replicate(cur0, cur1, skip_user, slave_field, debug)
+
+    debug("MainLoop...",level=3)
 
     # main loop:
     try:
@@ -162,6 +169,7 @@ def main_loop(dsn0, dsn1, is_killed, skip_user, slave_field=FIELD, keepalive=Fal
         # set isolation level to prevent read problems
         con0.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_SERIALIZABLE)
         con1.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_SERIALIZABLE)
+        debug("LISTENing...",level=3)
         while not is_killed():
             debug("Waiting for 'NOTIFY'",level=3)
             if select([cur0],[],[], TIMEOUT)==([],[],[]):
