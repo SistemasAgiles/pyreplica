@@ -31,7 +31,11 @@ import psycopg2,psycopg2.extensions
 import tpc
 import time
 import os
-import md5
+if sys.version_info >= (2, 6):
+    from hashlib import md5 
+else:
+    from md5 import md5
+
 
 if sys.platform!="win32":
     from select import select
@@ -54,8 +58,8 @@ def replicate(cur0, cur1, skip_user=None, slave_field=FIELD, debug=debug):
     
     # create a unique TPC transaction id 
     # (they diffier because they can apply to the same backend)
-    tpc_xid0 = con0.xid(0, 'pyreplica0 %s' % md5.md5(con0.dsn).hexdigest(),'')
-    tpc_xid1 = con1.xid(0, 'pyreplica1 %s' % md5.md5(con0.dsn).hexdigest(),'')
+    tpc_xid0 = con0.xid(0, 'pyreplica0 %s' % md5(con0.dsn).hexdigest(),'')
+    tpc_xid1 = con1.xid(0, 'pyreplica1 %s' % md5(con0.dsn).hexdigest(),'')
 
     # test if there is a prepared transaction in mater or slave
     tpc_xid0_pepared = tpc_xid0 in con0.tpc_recover()
