@@ -14,6 +14,7 @@ $BODY$
   # function to convert value from python to postgres representation
   def mogrify(v):
     if v is None: return 'NULL' 
+    if isinstance(v,long): return str(v) # don't add long prefix L (bigint)
     if isinstance(v,basestring): 
        r = repr(v)
        if not r.startswith('\"'):
