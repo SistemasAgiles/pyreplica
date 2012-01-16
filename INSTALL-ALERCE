@@ -1,0 +1,49 @@
+= Alerce: =
+
+Alerce is a dbapi2 compilant python interface that implements master/slave synchonous replication for postgresql using pyreplica (plpy trigger and two phase commit)
+
+Alerce is a wrapper over psycopg2 that redefines commit and rollback methods, replaying replica logs on the slave and syncing both databasses using prepared transactions. 
+
+Althought any error causes the transactions to be rolled back, Alerce supports simple failback and failover mechanisms (on reconnections). See failback.py and failover.py for more information.
+
+Further information:
+http://www.sistemasagiles.com.ar/trac/wiki/PyReplica
+
+== Using alerce: ==
+
+ * Install dependencies (plpython)
+ * Execute master-install.sql in master
+ * import and use alerce instead of psycopg2
+
+== Command line installation example: ==
+
+{{{
+#!sh
+
+apt-get install postgresql-plpython-8.1
+psql master < master-install.sql
+}}}
+
+== Python programming example: ==
+
+{{{
+#!python
+
+# import alerce (instead of psycopg2)
+from alerce import connect
+
+# connect to both databases:
+c = connect(('dbname=master user=postgres password=123',
+             'dbname=slave user=postgres password=123'))
+
+# create dbapi cursor, execute queries, fetch results:
+cur=c.cursor()
+# this DML will be executed on the master and replicated on the slave:
+cur.execute("insert into test (t) values (%s)", ["prueba"])
+c.commit()
+# this query will be executed on the master:
+cur.execute("select * from test")
+for row in cur:
+    print row
+    
+}}}

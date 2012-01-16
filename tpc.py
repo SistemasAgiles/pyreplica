@@ -16,7 +16,7 @@
 # for more details.
 
 from psycopg2.extensions import connection, ISOLATION_LEVEL_SERIALIZABLE, \
-         ISOLATION_LEVEL_AUTOCOMMIT
+         ISOLATION_LEVEL_AUTOCOMMIT, ISOLATION_LEVEL_READ_COMMITTED
 from psycopg2 import ProgrammingError
 
 class TwoPhaseCommitConnection(connection):
@@ -39,7 +39,7 @@ class TwoPhaseCommitConnection(connection):
         self.__tpc_prev_isolation_level = self.isolation_level
         # set isolation level to begin a TPC transaction
         # (actually in postgres at this point it is a normal one)
-        self.set_isolation_level(ISOLATION_LEVEL_SERIALIZABLE)
+        self.set_isolation_level(ISOLATION_LEVEL_READ_COMMITTED)
         # store actual TPC transaction id
         self.__tpc_xid = xid
         self.__tpc_prepared = False
