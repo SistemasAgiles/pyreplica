@@ -1,5 +1,11 @@
 -- == Master db ==
 
+-- Trigger installation script. Run:
+--   bash# psql -Upostgres database < master-install.sql
+--
+-- Before run, please modify the script if you want to replicate only a specified
+-- schema (the query at the end of this code).
+
 -- create python language: (comment if already installed, must be superuser):
 CREATE LANGUAGE plpythonu;
 
@@ -37,13 +43,14 @@ $BODY$
 
   # arguments passed in CREATE TRIGGER (specify relname and primary keys)
   args = TD['args'] 
-  relname = args[0]
-  primary_keys = args[1:]
+  schemaname = args[0]
+  relname = args[1]
+  primary_keys = args[2:]
 
   # make sql according with trigger DML action
   if event == 'INSERT':
-    sql = 'INSERT INTO "%s" (%s) VALUES (%s)' % (
-            relname,
+    sql = 'INSERT INTO "%s"."%s" (%s) VALUES (%s)' % (
+            schemaname,relname,
             ', '.join(['"%s"' % k for k in new.keys()]),
             ', '.join([mogrify(v) for v in new.values()]),
           )
@@ -61,16 +68,16 @@ $BODY$
             ' OR '.join(['"%s"<>%s' % (k,mogrify(v)) for k,v in old.items() if k in [km for (km,vm) in modified]]),
         )
         plpy.execute(plan, [ sql ], 0)
-      sql = 'UPDATE "%s" SET %s WHERE %s' % (
-            relname,
+      sql = 'UPDATE "%s"."%s" SET %s WHERE %s' % (
+            schemaname,relname,
             ', '.join(['"%s"=%s' % (k,mogrify(v)) for k,v in modified]),
             ' AND '.join(['"%s"=%s' % (k,mogrify(v)) for k,v in old.items() if k in primary_keys]),
           )
     else:
       sql = ""
   elif event == 'DELETE':
-    sql = 'DELETE FROM "%s" WHERE %s' % (
-            relname,
+    sql = 'DELETE FROM "%s"."%s" WHERE %s' % (
+            schemaname,relname,
             ' AND '.join(['"%s"=%s' % (k,mogrify(v)) for k,v in old.items() if k in primary_keys]),
           )
 
@@ -111,9 +118,11 @@ CREATE TABLE replica_log (
 
 -- == Automatically install trigger to all tables ==
 
-CREATE OR REPLACE FUNCTION py_log_create_tg(relname varchar) returns text AS
+CREATE OR REPLACE FUNCTION py_log_create_tg(schemaname varchar , relname varchar) returns text AS
 $BODY$
-relname = args[0]
+schemaname = args[0]
+relname = args[1]
+
 
 # find PK constraints
 rv = plpy.execute("""SELECT c.conname
@@ -150,16 +159,20 @@ LEFT JOIN information_schema.key_column_usage kcu
   # create triggers:
   plpy.execute("""
 CREATE TRIGGER %(relname)s_replica_tg 
-  AFTER INSERT OR UPDATE OR DELETE ON %(relname)s 
-  FOR EACH ROW EXECUTE PROCEDURE py_log_replica('%(relname)s', %(keys)s);
-""" % {'relname':relname,'keys':','.join(keys)})
+  AFTER INSERT OR UPDATE OR DELETE ON %(schemaname)s.%(relname)s 
+  FOR EACH ROW EXECUTE PROCEDURE py_log_replica('%(schemaname)s','%(relname)s', %(keys)s);
+""" % {'schemaname':schemaname,'relname':relname,'keys':','.join(keys)})
 
-  return "created trigger on %s (%s) " % (relname, ','.join(keys))
+  return "created trigger on %s.%s (%s) " % (schemaname,relname, ','.join(keys))
 
   ## $BODY$
   LANGUAGE 'plpythonu' VOLATILE;
 
 -- create trigger for all tables:
+SELECT py_log_create_tg(schemaname::text, tablename::text) from pg_tables where tablename !~ '^(pg_|sql_)' AND tablename != 'replica_log' ;
+-- Check which tables are included in the set:
+SELECT schemaname::text, tablename::text from pg_tables where tablename !~ '^(pg_|sql_)' AND tablename != 'replica_log' ;
 
-SELECT py_log_create_tg(relname::text) FROM pg_class WHERE relname !~ '^(pg_|sql_)' AND relkind = 'r' AND relname != 'replica_log' ;
 
+-- If you want to replicate only 1 schema use:
+-- SELECT py_log_create_tg(schemaname::text, tablename::text) from pg_tables where tablename !~ '^(pg_|sql_)' AND tablename != 'replica_log' AND schemaname = 'your_schema_name';
