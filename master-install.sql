@@ -176,3 +176,5 @@ SELECT schemaname::text, tablename::text from pg_tables where tablename !~ '^(pg
 
 -- If you want to replicate only 1 schema use:
 -- SELECT py_log_create_tg(schemaname::text, tablename::text) from pg_tables where tablename !~ '^(pg_|sql_)' AND tablename != 'replica_log' AND schemaname = 'your_schema_name';
+-- Uncomment the next statement if you want echo which tables have been included:
+-- SELECT schemaname::text, tablename::text from pg_tables where tablename !~ '^(pg_|sql_)' AND tablename != 'replica_log'  AND schemaname = 'your_schema_name';
