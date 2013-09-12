@@ -2,3 +2,5 @@
 == TODO ==
 
  * Agregar soporte para esquemas en el master-install con filtro 
+ * service.py:# win32 basic sample (TODO: make a real win32 service)
+
